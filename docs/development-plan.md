@@ -163,12 +163,11 @@ differs on reconnect`）。
   顺序坑：先 add，再写 user-layer patch 的 config（否则 Config schema
   `Required` 启动失败），再用 `pnpm install --force` 恢复共存依赖。
 
-### v0.3 可配置性
+### v0.3 可配置性（F6 已取消：主人决定不需要设置页）
 
-- **F6 设置页 UI**：经 `settings.section` 槽位提供 shell / shellArgs /
-  maxPerSession 配置（写回通道需先调研：better-sidebar 有设置页写入后对
-  后续终端生效，其实现经 host RPC + 存储；我们可做同样结构，或先支持
-  cordis.patch.yml 热更提示）。参考 #232。
+- **F6 设置页 UI**：~~经 `settings.section` 槽位提供 shell / shellArgs /
+  maxPerSession 配置~~ **已取消**（2026-08-28 主人决定不需要；配置维持
+  `cordis.patch.yml` 部署态覆盖即可）。
 - **F7（并入）方言细节对齐**：bash 交互参数 `-i`（现状 `-l`）、pwsh
   UTF-8 钉住（Windows 冒烟时验证）。
 
