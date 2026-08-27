@@ -1,0 +1,5 @@
+{
+  "client/features": "src/client/features",
+  "client/entities": "src/client/entities",
+  "client/shared": "src/client/shared"
+}

@@ -1,0 +1,17 @@
+# Node
+node_modules/
+/dist/
+/lib/
+/coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# agent memory artifacts (Claude Code, Codex, ...)
+.remember/

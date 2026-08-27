@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Pre-commit: fast, staged-only checks.
+npx lint-staged --concurrent 1

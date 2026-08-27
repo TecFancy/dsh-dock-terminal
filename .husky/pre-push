@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Pre-push: full type-check before CI pays for it.
+npm run type-check

@@ -1,0 +1,13 @@
+# dsh-dock-terminal bundle patch.
+#
+# When this package is added to a profile with `dsh plugin --profile web add
+# @tecfancy/dsh-dock-terminal`, the loader reconciles dsh.profile.bundles for
+# packages that declare dsh.bundle, so this row is registered on install.
+#
+# Per-deployment configuration is NOT baked into this patch - override it in
+# the user layer ($DSH_HOME/cordis.patch.yml or the profile's cordis.patch.yml,
+# both applied after every bundle layer). See deploy/cordis.patch.yml.
+
+- insert:
+    - id: dsh-dock-terminal
+      name: "@tecfancy/dsh-dock-terminal"

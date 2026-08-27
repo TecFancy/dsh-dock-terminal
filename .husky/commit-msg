@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Commit message lint (Conventional Commits) + strip AI-author trailers.
+# The trailer match is case-insensitive: Claude Code writes
+# "Co-Authored-By: Claude ..." while Copilot writes "Co-authored-by: Copilot".
+# GNU sed (git-bash on Windows, Linux/macOS CI) supports -E + I.
+npx --no -- commitlint --edit "$1"
+sed -i -E '/^Co-[Aa]uthored-[Bb]y:[[:space:]]*(Claude|Copilot)/Id' "$1"

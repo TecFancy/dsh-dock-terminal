@@ -1,0 +1,183 @@
+import { describe, expect, it } from "vitest";
+import type { WebSocket } from "ws";
+import { Config } from "./config.js";
+import { PtyManager, type PtyLike } from "./pty.js";
+import { attachTerminal, isTrustedRequest, toText } from "./terminal-server.js";
+
+/** Minimal fake pty. node-pty supports many onData/onExit subscribers
+ * (EventEmitter semantics), so the fake keeps subscription sets too. */
+function fakePty() {
+  const writes: string[] = [];
+  const resizes: { cols: number; rows: number }[] = [];
+  const dataSubs = new Set<(data: string) => void>();
+  const exitSubs = new Set<(info: { exitCode?: number }) => void>();
+  let killed = false;
+  const pty: PtyLike = {
+    onData(cb: (data: string) => void) {
+      dataSubs.add(cb);
+      return {
+        dispose: () => {
+          dataSubs.delete(cb);
+        },
+      };
+    },
+    onExit(cb: (info: { exitCode?: number }) => void) {
+      exitSubs.add(cb);
+      return {
+        dispose: () => {
+          exitSubs.delete(cb);
+        },
+      };
+    },
+    write(data: string) {
+      writes.push(data);
+    },
+    resize(cols: number, rows: number) {
+      resizes.push({ cols, rows });
+    },
+    kill() {
+      killed = true;
+    },
+  };
+  return {
+    pty,
+    writes,
+    resizes,
+    get killed() {
+      return killed;
+    },
+    emitData(data: string) {
+      for (const cb of dataSubs) cb(data);
+    },
+    emitExit(info: { exitCode?: number } = {}) {
+      for (const cb of exitSubs) cb(info);
+    },
+  };
+}
+
+function fakeModule() {
+  const spawned: ReturnType<typeof fakePty>[] = [];
+  return {
+    spawn(_file: string, _args: string[], _options: Record<string, unknown>) {
+      const fake = fakePty();
+      spawned.push(fake);
+      return fake.pty;
+    },
+    spawned,
+  };
+}
+
+/** Minimal fake ws (records sends/closes; emits into registered handlers). */
+function fakeWs() {
+  const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
+  const sent: string[] = [];
+  const closed: { code: number | null; reason: string | null }[] = [];
+  const ws = {
+    readyState: 1,
+    bufferedAmount: 0,
+    send: (data: string) => {
+      sent.push(data);
+    },
+    close: (code?: number, reason?: string) => {
+      closed.push({ code: code ?? null, reason: reason ?? null });
+    },
+    on: (event: string, cb: (...args: unknown[]) => void) => {
+      const list = handlers.get(event) ?? [];
+      list.push(cb);
+      handlers.set(event, list);
+    },
+  } as unknown as WebSocket;
+  const emit = (event: string, ...args: unknown[]) => {
+    for (const cb of handlers.get(event) ?? []) cb(...args);
+  };
+  return { ws, sent, closed, emit };
+}
+
+const noCtx = { get: () => undefined };
+
+describe("isTrustedRequest", () => {
+  it("accepts loopback authorities and rejects cross-site requests", () => {
+    expect(isTrustedRequest({ headers: { host: "127.0.0.1:3000" } })).toBe(true);
+    expect(isTrustedRequest({ headers: { host: "localhost:3000" } })).toBe(true);
+    expect(
+      isTrustedRequest({ headers: { host: "127.0.0.1:3000", "sec-fetch-site": "cross-site" } }),
+    ).toBe(false);
+    expect(
+      isTrustedRequest({ headers: { host: "evil.example:3000", origin: "https://evil.example" } }),
+    ).toBe(true);
+    expect(
+      isTrustedRequest({ headers: { host: "evil.example:3000", origin: "https://other.example" } }),
+    ).toBe(false);
+  });
+});
+
+describe("toText", () => {
+  it("decodes all RawData shapes", () => {
+    expect(toText(Buffer.from("hi"))).toBe("hi");
+    expect(toText("plain")).toBe("plain");
+    expect(toText([Buffer.from("a"), Buffer.from("b")])).toBe("ab");
+    expect(toText(Uint8Array.from([97]).buffer)).toBe("a");
+  });
+});
+
+describe("attachTerminal", () => {
+  it("closes with 1008 when session/tab params are missing", () => {
+    const { ws, closed } = fakeWs();
+    attachTerminal(noCtx, null, Config.parse({}), ws, { url: "/dock-terminal/ws" });
+    expect(closed[0]?.code).toBe(1008);
+  });
+
+  it("closes with 1011 when node-pty is unavailable", () => {
+    const { ws, closed } = fakeWs();
+    attachTerminal(noCtx, null, Config.parse({}), ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    expect(closed[0]?.code).toBe(1011);
+  });
+
+  it("replays transcript, writes keyboard input, resizes, and closes", async () => {
+    const module = fakeModule();
+    const manager = new PtyManager(module, Config.parse({}));
+    const { ws, sent, emit } = fakeWs();
+
+    attachTerminal(noCtx, manager, Config.parse({}), ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    const fake = module.spawned[0]!;
+
+    // Keyboard input is written verbatim; control frames are not.
+    emit("message", Buffer.from("echo hi"));
+    expect(fake.writes.at(-1)).toBe("echo hi");
+    emit("message", JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
+    expect(fake.resizes.at(-1)).toEqual({ cols: 120, rows: 40 });
+    emit("message", JSON.stringify({ type: "close" }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(fake.killed).toBe(true);
+    expect(sent).toEqual([]);
+  });
+
+  it("replays the transcript on reopen and parks on a park frame", () => {
+    const module = fakeModule();
+    const manager = new PtyManager(module, Config.parse({}));
+    const first = fakeWs();
+    attachTerminal(noCtx, manager, Config.parse({}), first.ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    const fake = module.spawned[0]!;
+    fake.emitData("prompt> ");
+    first.emit("close");
+
+    // Reconnect within the grace window: same pty, transcript replayed.
+    const second = fakeWs();
+    attachTerminal(noCtx, manager, Config.parse({}), second.ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    expect(second.sent).toEqual(["prompt> "]);
+    expect(fake.killed).toBe(false);
+
+    // Park frame marks the handle; a later socket drop keeps the pty alive.
+    second.emit("message", JSON.stringify({ type: "park" }));
+    second.emit("close");
+    expect(fake.killed).toBe(false);
+  });
+});

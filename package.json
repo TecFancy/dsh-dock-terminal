@@ -1,0 +1,123 @@
+{
+  "name": "@tecfancy/dsh-dock-terminal",
+  "version": "0.1.0",
+  "description": "In-place terminal popover for a dsh (DeepSeek Harness) web client, launched from the conversation dock. Built as a Feature-Sliced Design static Cordis plugin.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "fsd",
+    "feature-sliced",
+    "cordis",
+    "terminal",
+    "xterm",
+    "pty"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TecFancy/dsh-dock-terminal.git"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "packageManager": "npm@10.9.3",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./skills/*": "./skills/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "cordis.patch.yml",
+    "deploy"
+  ],
+  "sideEffects": false,
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-renderer"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsdown && tsc -p tsconfig.client.build.json",
+    "type-check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "lint": "eslint .",
+    "lint:no-emdash": "node scripts/check-no-emdash.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "aliases:check": "node scripts/check-aliases.mjs",
+    "skills:sync": "node scripts/sync-skills.mjs",
+    "skills:check": "node scripts/sync-skills.mjs --check",
+    "bundle:check": "node scripts/verify-bundle.mjs",
+    "verify": "npm run format:check && npm run lint && npm run lint:no-emdash && npm run aliases:check && npm run type-check && npm run test:coverage && npm run build && npm run bundle:check && npm run skills:check",
+    "prepack": "npm run build && npm run bundle:check",
+    "prepare": "node -e \"try { require.resolve('husky') } catch { process.exit(0) } require('node:child_process').execSync('husky', { stdio: 'inherit' })\""
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@eslint/js": "^10.0.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.1",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.5",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "eslint": "^10.2.1",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import-x": "^4.16.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "husky": "^9.1.7",
+    "jsdom": "^29.1.1",
+    "lightningcss": "^1.29.2",
+    "lint-staged": "17.0.7",
+    "prettier": "^3.8.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "strip-json-comments": "^5.0.1",
+    "tsdown": "^0.22.2",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true,
+    "unrs-resolver@1.12.2": true
+  }
+}
