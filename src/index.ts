@@ -40,6 +40,21 @@ export function apply(ctx: RuntimeContext, config: unknown): void {
   const manager = nodePty === null ? null : new PtyManager(nodePty, resolved);
   const wss = new WebSocketServer({ noServer: true });
 
+  // Close every pty of a disposed conversation immediately: deleting a
+  // session must not wait out the reconnect grace window for its shells.
+  ctx.effect(
+    () =>
+      ctx.on("session/disposed", (payload: unknown) => {
+        let sessionId: unknown;
+        if (typeof payload === "string") {
+          sessionId = payload;
+        } else if (payload !== null && typeof payload === "object") {
+          sessionId = (payload as { id?: unknown }).id;
+        }
+        if (typeof sessionId === "string") manager?.closeSession(sessionId);
+      }),
+    "dsh-dock-terminal: close ptys of disposed sessions",
+  );
   ctx.effect(
     () =>
       ctx.webServer.registerUpgrade({
@@ -74,6 +89,7 @@ interface RuntimeContext {
       handler(req: unknown, socket: unknown, head: unknown): void | Promise<void>;
     }): () => void;
   };
+  on(event: string, handler: (payload?: unknown) => void): () => void;
   get(name: string): unknown;
   effect(fn: () => unknown, label?: string): unknown;
   logger?: (namespace: string) => { warn(message: string): void };

@@ -145,6 +145,10 @@ describe("attachTerminal", () => {
     });
     const fake = module.spawned[0]!;
 
+    // The first frame is the meta frame (shell/cwd/cap), then raw output.
+    expect(JSON.parse(sent[0]!)).toMatchObject({ type: "meta", maxPerSession: 2 });
+    expect(sent).toHaveLength(1);
+
     // Keyboard input is written verbatim; control frames are not.
     emit("message", Buffer.from("echo hi"));
     expect(fake.writes.at(-1)).toBe("echo hi");
@@ -152,7 +156,7 @@ describe("attachTerminal", () => {
     expect(fake.resizes.at(-1)).toEqual({ cols: 120, rows: 40 });
     emit("message", JSON.stringify({ type: "close" }));
     expect(fake.killed).toBe(true);
-    expect(sent).toEqual([]);
+    expect(sent).toHaveLength(1);
   });
 
   it("an explicit close frame wins over the socket-close grace window", () => {
@@ -178,7 +182,8 @@ describe("attachTerminal", () => {
       url: "/dock-terminal/ws?sessionId=s1&tab=t1",
     });
     expect(module.spawned).toHaveLength(2);
-    expect(second.sent).toEqual([]);
+    expect(JSON.parse(second.sent[0]!)).toMatchObject({ type: "meta" });
+    expect(second.sent).toHaveLength(1);
   });
 
   it("park is a no-op on a dead key (no zombie park left behind)", () => {
@@ -206,12 +211,13 @@ describe("attachTerminal", () => {
     fake.emitData("prompt> ");
     first.emit("close");
 
-    // Reconnect within the grace window: same pty, transcript replayed.
+    // Reconnect within the grace window: same pty, meta then transcript replay.
     const second = fakeWs();
     attachTerminal(noCtx, manager, Config.parse({}), second.ws, {
       url: "/dock-terminal/ws?sessionId=s1&tab=t1",
     });
-    expect(second.sent).toEqual(["prompt> "]);
+    expect(JSON.parse(second.sent[0]!)).toMatchObject({ type: "meta", cwd: process.cwd() });
+    expect(second.sent[1]).toBe("prompt> ");
     expect(fake.killed).toBe(false);
 
     // Park frame marks the handle; a later socket drop keeps the pty alive.

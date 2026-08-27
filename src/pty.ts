@@ -1,6 +1,6 @@
 import { chmodSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /**
  * PTY lifecycle for dsh-dock-terminal. One node-pty process per
@@ -119,12 +119,27 @@ export class PtyManager {
     return handle !== undefined && !handle.exited;
   }
 
+  /** The resolved shell binary basename, for display (e.g. "bash"). */
+  shellName(): string {
+    return basename(this.shell);
+  }
+
   /** Close a handle now, canceling any pending grace timer (user close). */
   close(key: string): void {
     this.cancelClose(key);
     this.parked.delete(key);
     const handle = this.sessions.get(key);
     if (handle !== undefined) this.closeNow(handle);
+  }
+
+  /** Close every pty of one session (its conversation was disposed). */
+  closeSession(sessionId: string): void {
+    for (const handle of [...this.sessions.values()]) {
+      if (handle.sessionId === sessionId) this.close(handle.key);
+    }
+    for (const key of [...this.parked]) {
+      if (key.startsWith(`${sessionId}:`)) this.close(key);
+    }
   }
 
   /** Schedule a pty close after the grace window (0 = now). */

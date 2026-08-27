@@ -6,7 +6,8 @@ static Cordis plugin. It publishes a `terminal:open` button into the
 [dsh-dock-host](../../dsh-dock-host) `dockButtons` registry and mounts the
 terminal panel into `conversation.composer.dock` - the band under the
 composer card. Clicking the dock button expands the popover; clicking again
-(or the close button) collapses it.
+(or the close button) collapses it. The popover hosts **one terminal per tab**
+(bounded by `maxPerSession`), with a tab bar to open, switch and close shells.
 
 The plugin is deliberately **atomic**: it does terminals only. The shell runs
 on the dsh host through node-pty; the browser renders it with xterm.js over a
@@ -19,14 +20,14 @@ src/
   index.ts                     host root: /dock-terminal/ws upgrade route, config
   config.ts                    config schema (shell, shellArgs, maxPerSession, ...)
   pty.ts                       PtyManager: one node-pty per session/tab key
-  terminal-server.ts           wire protocol: transcript replay, frames, trust fence
+  terminal-server.ts           wire protocol: meta frame, transcript replay, trust fence
   client/
     index.tsx                  client root: dock button + composer.dock popover
     shared/config/context.ts   structural contracts (slots, locale, dockButtons)
     features/terminal-popover/
-      TerminalPopover.tsx      open/close panel in conversation.composer.dock
+      TerminalPopover.tsx      tabbed panel in conversation.composer.dock
       TerminalView.tsx         xterm view + WebSocket connection lifecycle
-      popover-store.ts         module-level visibility store (button <-> panel)
+      terminal-store.ts        module-level store: visibility + terminal tabs
       i18n.ts                  en/zh dictionaries for the popover
 ```
 
@@ -41,14 +42,16 @@ Client opens `wss://<host>/dock-terminal/ws?sessionId=<id>&tab=<tabId>`:
 - keyboard input: any text message that is not valid JSON is written to the
   pty stdin;
 - control frames: `{"type":"resize","cols":n,"rows":n}` resizes the shell,
-  `{"type":"park"}` marks the terminal across a session switch (keeps the
-  process alive), `{"type":"close"}` closes it;
-- server -> client: raw pty output. A reconnecting socket replays a bounded
+  `{"type":"park"}` marks the terminal across a session switch or tab switch
+  (keeps the process alive), `{"type":"close"}` closes it;
+- server -> client: first a `{"type":"meta","shell":...,"cwd":...,"maxPerSession":n}`
+  frame, then raw pty output. A reconnecting socket replays a bounded
   transcript ring before live data.
 
 One pty per `${sessionId}:${tabId}` key survives page refreshes (grace
-window `reconnectGraceMs`, default 30 s) and session switches (parked), and
-is capped per conversation by `maxPerSession`.
+window `reconnectGraceMs`, default 30 s) and session switches (parked), is
+capped per conversation by `maxPerSession`, and is closed immediately when
+its conversation is disposed.
 
 ## Install
 

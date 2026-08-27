@@ -76,6 +76,7 @@ describe("apply (host root)", () => {
           return () => undefined;
         },
       },
+      on: () => () => undefined,
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
       effect: (fn: () => unknown) => {
@@ -88,9 +89,10 @@ describe("apply (host root)", () => {
     expect(upgrades).toHaveLength(1);
     expect(upgrades[0]?.path).toBe("/dock-terminal/ws");
     expect(typeof upgrades[0]?.handler).toBe("function");
-    // Two effects: the upgrade route and the teardown disposer.
-    expect(effects).toHaveLength(2);
-    const dispose = effects[1]!() as () => void;
+    // Three effects: the disposed-session subscription, the upgrade route
+    // and the teardown disposer.
+    expect(effects).toHaveLength(3);
+    const dispose = effects[2]!() as () => void;
     expect(dispose).toBeTypeOf("function");
     dispose(); // manager.disposeAll + wss.close must not throw
   });
@@ -110,6 +112,7 @@ describe("apply (host root)", () => {
           return () => undefined;
         },
       },
+      on: () => () => undefined,
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
       effect: (fn: () => unknown) => fn(),
@@ -130,6 +133,7 @@ describe("apply (host root)", () => {
           return () => undefined;
         },
       },
+      on: () => () => undefined,
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
       effect: (fn: () => unknown) => fn(),
@@ -138,6 +142,31 @@ describe("apply (host root)", () => {
     // (the route stays registered and answers with a 1011 close).
     expect(() => apply(ctx, {})).not.toThrow();
     expect(upgrades).toHaveLength(1);
+  });
+
+  it("subscribes to session/disposed and tolerates every payload shape", () => {
+    const handlers: ((payload?: unknown) => void)[] = [];
+    const ctx = {
+      webServer: {
+        registerUpgrade: (_route: { path: string; handler: unknown }) => {
+          return () => undefined;
+        },
+      },
+      on: (_event: string, handler: (payload?: unknown) => void) => {
+        handlers.push(handler);
+        return () => undefined;
+      },
+      get: () => undefined,
+      logger: () => ({ warn: () => undefined }),
+      effect: (fn: () => unknown) => fn(),
+    };
+    apply(ctx, {});
+    expect(handlers).toHaveLength(1);
+    // String, session-object and undefined payloads must never throw
+    // (manager is null here; the listener resolves the id defensively).
+    expect(() => handlers[0]!("s1")).not.toThrow();
+    expect(() => handlers[0]!({ id: "s1" })).not.toThrow();
+    expect(() => handlers[0]!(undefined)).not.toThrow();
   });
 });
 
@@ -183,5 +212,42 @@ describe("PtyManager", () => {
     manager.scheduleClose("s1:t1", 0);
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(fake.killed).toBe(true);
+  });
+
+  it("closes every pty of a disposed session and spares other sessions", () => {
+    const module = fakeModule();
+    const manager = new PtyManager(module as never, Config.parse({ maxPerSession: 3 }));
+    manager.open("s1", "t1", "/tmp", 80, 24);
+    manager.open("s1", "t2", "/tmp", 80, 24);
+    manager.open("s2", "t1", "/tmp", 80, 24);
+    manager.park("s2:t1");
+
+    manager.closeSession("s1");
+
+    expect(module.spawned[0]!.killed).toBe(true);
+    expect(module.spawned[1]!.killed).toBe(true);
+    // A parked pty of another session must survive the cleanup.
+    expect(module.spawned[2]!.killed).toBe(false);
+    expect(manager.isLive("s2:t1")).toBe(true);
+    expect(manager.isLive("s1:t1")).toBe(false);
+    expect(manager.isLive("s1:t2")).toBe(false);
+  });
+
+  it("respawns when the authoritative cwd differs on reconnect", () => {
+    const module = fakeModule();
+    const manager = new PtyManager(module as never, Config.parse({}));
+    manager.open("s1", "t1", process.cwd(), 80, 24);
+    const first = module.spawned[0]!;
+
+    // The first connect hydrates before the session header arrives, so it
+    // fell back to the process cwd; the authoritative cwd must respawn.
+    manager.open("s1", "t1", "/tmp/authoritative", 80, 24);
+    expect(first.killed).toBe(true);
+    expect(module.spawned).toHaveLength(2);
+
+    // Same cwd again reuses the fresh pty.
+    const again = manager.open("s1", "t1", "/tmp/authoritative", 80, 24);
+    expect(module.spawned).toHaveLength(2);
+    expect(again.cwd).toBe("/tmp/authoritative");
   });
 });

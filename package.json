@@ -1,6 +1,6 @@
 {
   "name": "@tecfancy/dsh-dock-terminal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "In-place terminal popover for a dsh (DeepSeek Harness) web client, launched from the conversation dock. Built as a Feature-Sliced Design static Cordis plugin.",
   "keywords": [
     "dsh",

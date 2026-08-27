@@ -1,4 +1,4 @@
 export { TerminalPopover } from "./TerminalPopover.tsx";
-export { TerminalView } from "./TerminalView.tsx";
+export { TerminalView, type TerminalMeta } from "./TerminalView.tsx";
 export { LOCALES, LOCALE_NS, syncLocale, t } from "./i18n.ts";
-export { createPopoverStore, popoverStore } from "./popover-store.ts";
+export { createTerminalStore, terminalStore, type TerminalStore } from "./terminal-store.ts";

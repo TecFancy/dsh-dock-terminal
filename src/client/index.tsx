@@ -1,6 +1,6 @@
 import { TerminalPopover } from "./features/terminal-popover/TerminalPopover.tsx";
 import { LOCALES, LOCALE_NS, syncLocale } from "./features/terminal-popover/i18n.ts";
-import { popoverStore } from "./features/terminal-popover/popover-store.ts";
+import { terminalStore } from "./features/terminal-popover/terminal-store.ts";
 import {
   COMPOSER_DOCK_SLOT,
   POPOVER_SLOT_ID,
@@ -14,8 +14,8 @@ import {
  * dock-host's dockButtons registry and mounts the terminal popover into
  * `conversation.composer.dock` (the band under the composer card).
  *
- * The button toggles a module-level visibility store; the popover renders
- * nothing while closed, and hosts one live xterm per open view otherwise.
+ * The button toggles the terminal store; the popover renders nothing while
+ * closed, and hosts one live xterm per tab otherwise.
  */
 export const name = "dsh-dock-terminal";
 export const inject = ["slots", "locale", "dockButtons"] as const;
@@ -39,7 +39,7 @@ export function apply(ctx: TerminalClientContext): void {
         label: () => bind("open"),
         icon: "\u25B8",
         primary: true,
-        run: () => popoverStore.toggle(),
+        run: () => terminalStore.toggle(),
       }),
     "dsh-dock-terminal: dock button",
   );

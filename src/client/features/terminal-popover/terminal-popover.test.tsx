@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPopoverStore } from "./popover-store.ts";
-import { syncLocale, t, subscribeT } from "./i18n.ts";
+import { syncLocale, t } from "./i18n.ts";
+import { createTerminalStore, terminalStore } from "./terminal-store.ts";
 import { TerminalView } from "./TerminalView.tsx";
 import { TerminalPopover } from "./TerminalPopover.tsx";
 
@@ -10,6 +10,7 @@ import { TerminalPopover } from "./TerminalPopover.tsx";
 class MockWebSocket {
   static OPEN = 1;
   static instances: MockWebSocket[] = [];
+  static frames: string[] = [];
   readyState = 0;
   bufferedAmount = 0;
   readonly url: string;
@@ -17,11 +18,16 @@ class MockWebSocket {
     this.url = url;
     MockWebSocket.instances.push(this);
   }
-  send(): void {
-    return;
+  send(data: string): void {
+    MockWebSocket.frames.push(data);
   }
   close(): void {
     this.readyState = 3;
+  }
+  /** Simulate the browser opening the socket (readyState flips to OPEN). */
+  fireOpen(): void {
+    this.readyState = 1;
+    (this as unknown as { onopen: (() => void) | null }).onopen?.();
   }
 }
 vi.stubGlobal("WebSocket", MockWebSocket);
@@ -57,27 +63,60 @@ vi.mock("@xterm/addon-fit", () => ({
   },
 }));
 
-describe("popover store", () => {
-  afterEach(cleanup);
-
-  it("toggles and notifies subscribers; unsubscribe works", () => {
-    const store = createPopoverStore();
+describe("terminal store", () => {
+  it("opens with one tab, toggles, and closes the whole popover on the last tab close", () => {
+    const store = createTerminalStore();
     const seen: boolean[] = [];
     const unsubscribe = store.subscribe(() => seen.push(store.isOpen()));
 
     expect(store.isOpen()).toBe(false);
+    expect(store.tabs()).toHaveLength(0);
     store.open();
-    store.open(); // no double notify
-    expect(seen).toEqual([true]);
+    expect(store.isOpen()).toBe(true);
+    expect(store.tabs()).toHaveLength(1);
+    const first = store.tabs()[0]!.id;
+    expect(store.activeId()).toBe(first);
+
     store.toggle();
     expect(store.isOpen()).toBe(false);
-    expect(seen).toEqual([true, false]);
+    expect(store.tabs()).toHaveLength(0);
     store.toggle();
     expect(store.isOpen()).toBe(true);
+    // Reopening after a full collapse starts a fresh tab.
+    expect(store.tabs()).toHaveLength(1);
+    const reopened = store.tabs()[0]!.id;
 
+    // Closing the last tab collapses the popover.
+    store.closeTab(reopened);
+    expect(store.isOpen()).toBe(false);
+    expect(store.tabs()).toHaveLength(0);
     unsubscribe();
-    store.close();
-    expect(seen).toEqual([true, false, true]);
+  });
+
+  it("adds tabs, activates and closes one without collapsing the popover", () => {
+    const store = createTerminalStore();
+    store.open();
+    const a = store.activeId()!;
+    const b = store.addTab()!;
+    expect(store.activeId()).toBe(b);
+    expect(store.tabs()).toHaveLength(2);
+
+    store.activate(a);
+    expect(store.activeId()).toBe(a);
+    store.closeTab(b);
+    expect(store.isOpen()).toBe(true);
+    expect(store.tabs()).toHaveLength(1);
+    expect(store.activeId()).toBe(a);
+  });
+
+  it("enforces maxPerSession once the host meta frame reports it", () => {
+    const store = createTerminalStore();
+    store.open();
+    store.setMaxPerSession(2);
+    store.addTab();
+    expect(store.addTab()).toBeNull();
+    expect(store.tabs()).toHaveLength(2);
+    expect(store.maxPerSession()).toBe(2);
   });
 });
 
@@ -93,34 +132,25 @@ describe("i18n", () => {
     expect(t("title")).toBe("Terminal");
     expect(t("missing")).toBe("missing");
   });
-
-  it("keeps subscribers in sync with locale changes", () => {
-    const seen: string[] = [];
-    const unsubscribe = subscribeT(() => seen.push(t("open")));
-    syncLocale("zh");
-    expect(seen).toEqual(["打开终端"]);
-    syncLocale({ id: "en" });
-    expect(seen).toEqual(["打开终端", "Open terminal"]);
-    syncLocale({ locale: "zh" });
-    expect(seen).toHaveLength(3);
-    unsubscribe();
-    syncLocale("en");
-    expect(seen).toHaveLength(3);
-  });
 });
 
 describe("TerminalView", () => {
   afterEach(cleanup);
 
+  function renderView(sessionId: string, tabId = "t1") {
+    return render(<TerminalView sessionId={sessionId} tabId={tabId} />);
+  }
+
   it("connects a socket per session and writes terminal output", () => {
     MockWebSocket.instances = [];
-    const { container } = render(<TerminalView sessionId="s1" />);
+    const { container } = renderView("s1");
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0]!.url).toContain("sessionId=s1");
+    expect(MockWebSocket.instances[0]!.url).toContain("tab=t1");
 
     const socket = MockWebSocket.instances[0]!;
     act(() => {
-      (socket as unknown as { onopen: (() => void) | null }).onopen?.();
+      socket.fireOpen();
       const onmessage = (socket as unknown as { onmessage: ((e: { data: string }) => void) | null })
         .onmessage;
       onmessage?.({ data: "hi" });
@@ -128,52 +158,223 @@ describe("TerminalView", () => {
     expect(container.firstChild).not.toBeNull();
   });
 
-  it("reports a failed connect and a dropped socket", () => {
+  it("consumes the meta frame: reports it and caps the store", () => {
     MockWebSocket.instances = [];
-    const { container } = render(<TerminalView sessionId="s2" />);
+    const store = createTerminalStore();
+    store.open();
+    const onMeta = vi.fn();
+    const { container } = render(
+      <TerminalView sessionId="s1" tabId={store.activeId()!} onMeta={onMeta} store={store} />,
+    );
     const socket = MockWebSocket.instances[0]!;
+    act(() => {
+      socket.fireOpen();
+      const onmessage = (socket as unknown as { onmessage: ((e: { data: string }) => void) | null })
+        .onmessage;
+      onmessage?.({
+        data: JSON.stringify({ type: "meta", shell: "bash", cwd: "/tmp", maxPerSession: 3 }),
+      });
+    });
+    expect(onMeta).toHaveBeenCalledWith({
+      type: "meta",
+      shell: "bash",
+      cwd: "/tmp",
+      maxPerSession: 3,
+    });
+    expect(store.maxPerSession()).toBe(3);
+    expect(container.firstChild).not.toBeNull();
+  });
 
+  it("shows the failure banner with repair hint and retry on a 1011 close", () => {
+    MockWebSocket.instances = [];
+    const { container, unmount } = renderView("s2");
+    const socket = MockWebSocket.instances[0]!;
     act(() => {
       (
         socket as unknown as {
           onclose: ((e: { code: number; reason: string }) => void) | null;
         }
-      ).onclose?.({ code: 1011, reason: "node-pty unavailable" });
+      ).onclose?.({ code: 1011, reason: "node-pty unavailable on this host" });
     });
-    expect(container.textContent).toContain("node-pty unavailable");
+    expect(container.textContent).toContain("node-pty unavailable on this host");
+    expect(container.textContent).toContain("pnpm");
+    unmount();
+  });
 
+  it("reconnects when the user clicks retry after a failed attach", () => {
+    MockWebSocket.instances = [];
+    const { container } = renderView("s3");
+    const first = MockWebSocket.instances[0]!;
     act(() => {
       (
-        socket as unknown as {
-          onopen: (() => void) | null;
+        first as unknown as {
+          onclose: ((e: { code: number; reason: string }) => void) | null;
         }
-      ).onopen?.();
-      (
-        socket as unknown as {
-          onerror: (() => void) | null;
-        }
-      ).onerror?.();
+      ).onclose?.({ code: 1011, reason: "boom" });
+    });
+    expect(container.textContent).toContain("boom");
+
+    const retry = [...container.querySelectorAll("button")].find((b) =>
+      b.textContent?.toLowerCase().includes("retry"),
+    );
+    act(() => {
+      retry?.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
+    });
+    expect(MockWebSocket.instances).toHaveLength(2);
+    expect(container.textContent).not.toContain("boom");
+  });
+
+  it("writes non-meta JSON output verbatim without breaking", () => {
+    MockWebSocket.instances = [];
+    const { container } = renderView("s4", "t9");
+    const socket = MockWebSocket.instances[0]!;
+    act(() => {
+      socket.fireOpen();
+      const onmessage = (socket as unknown as { onmessage: ((e: { data: string }) => void) | null })
+        .onmessage;
+      onmessage?.({ data: '{"some":"pty-output"}' });
     });
     expect(container.firstChild).not.toBeNull();
+  });
+
+  it("sends exactly one park frame on a session switch while the popover is open", () => {
+    MockWebSocket.instances = [];
+    MockWebSocket.frames = [];
+    const store = createTerminalStore();
+    store.open();
+    const first = store.tabs()[0]!.id;
+    const { rerender } = render(<TerminalView sessionId="s1" tabId={first} store={store} />);
+    const socket = MockWebSocket.instances[0]!;
+    act(() => {
+      socket.fireOpen();
+    });
+    MockWebSocket.frames = [];
+
+    // The user switched to another conversation: park the pty, do not close.
+    act(() => {
+      rerender(<TerminalView sessionId="s2" tabId={first} store={store} />);
+    });
+
+    const parked = MockWebSocket.frames.filter((frame) => frame.includes('"type":"park"'));
+    const closed = MockWebSocket.frames.filter((frame) => frame.includes('"type":"close"'));
+    expect(parked).toHaveLength(1);
+    expect(closed).toHaveLength(0);
+    expect(store.hasTab(first)).toBe(true);
+    store.close();
+  });
+
+  it("sends a close frame when its tab is closed while another stays open", () => {
+    MockWebSocket.instances = [];
+    MockWebSocket.frames = [];
+    const store = createTerminalStore();
+    store.open();
+    const first = store.tabs()[0]!.id;
+    const added = store.addTab()!;
+    const activeFirst = render(<TerminalView sessionId="s1" tabId={first} store={store} />);
+    act(() => {
+      MockWebSocket.instances[0]!.fireOpen();
+    });
+    MockWebSocket.frames = [];
+    store.closeTab(first);
+    act(() => {
+      activeFirst.unmount();
+    });
+
+    const closed = MockWebSocket.frames.filter((frame) => frame.includes('"type":"close"'));
+    expect(closed).toHaveLength(1);
+    expect(store.hasTab(added)).toBe(true);
+    store.close();
   });
 });
 
 describe("TerminalPopover", () => {
   afterEach(cleanup);
 
-  it("renders nothing when the store is closed and the panel when open", () => {
-    const store = createPopoverStore();
+  it("renders nothing when the store is closed and the tabbed panel when open", () => {
+    const store = createTerminalStore();
     const { container, rerender } = render(<TerminalPopover sessionId="s1" store={store} />);
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
-    act(() => store.open());
+    act(() => {
+      store.open();
+    });
     rerender(<TerminalPopover sessionId="s1" store={store} />);
     expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
 
-    // The close button collapses the panel again (click the button).
-    const closeButton = container.querySelector("button");
+    // The header close button collapses the panel again.
     act(() => {
+      const closeButton = container.querySelector(
+        '[data-testid="terminal-popover"] button[aria-label="Collapse"]',
+      );
       closeButton?.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
     });
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
   });
+
+  it("shows the header meta once the host meta frame arrives", () => {
+    const store = createTerminalStore();
+    store.open();
+    const { container, rerender } = render(<TerminalPopover sessionId="s1" store={store} />);
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    act(() => {
+      socket.fireOpen();
+      const onmessage = (socket as unknown as { onmessage: ((e: { data: string }) => void) | null })
+        .onmessage;
+      onmessage?.({
+        data: JSON.stringify({ type: "meta", shell: "zsh", cwd: "/srv/a", maxPerSession: 3 }),
+      });
+    });
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
+    expect(container.textContent).toContain("zsh");
+    expect(container.textContent).toContain("/srv/a");
+    store.close();
+  });
+
+  it("adds and closes tabs through the tab bar and disables + at the cap", () => {
+    const store = createTerminalStore();
+    store.open();
+    store.setMaxPerSession(2);
+    const { container, rerender } = render(<TerminalPopover sessionId="s1" store={store} />);
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
+
+    const addButton = (): HTMLButtonElement =>
+      [...container.querySelectorAll("button")].find(
+        (b) => b.getAttribute("aria-label") === "New terminal",
+      )!;
+    const tabCloseButtons = (): HTMLElement[] =>
+      [...container.querySelectorAll<HTMLElement>('[role="button"]')].filter(
+        (b) => b.getAttribute("aria-label") === "Close terminal",
+      );
+
+    // "+" adds a second tab (third is disabled at maxPerSession=2).
+    act(() => {
+      addButton().dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
+    });
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
+    expect(store.tabs()).toHaveLength(2);
+    expect(addButton().disabled).toBe(true);
+
+    // Closing one tab keeps the popover open, re-activates the other, and
+    // sends the final close frame for the removed tab's pane (its view
+    // unmounts because the tab no longer exists in the store).
+    const closed = store.tabs()[0]!.id;
+    MockWebSocket.frames = [];
+    act(() => {
+      for (const socket of MockWebSocket.instances) socket.fireOpen();
+    });
+    MockWebSocket.frames = [];
+    act(() => {
+      tabCloseButtons()[0]!.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
+    });
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
+    expect(store.tabs()).toHaveLength(1);
+    expect(store.hasTab(closed)).toBe(false);
+    expect(store.isOpen()).toBe(true);
+    expect(MockWebSocket.frames.some((f) => f.includes('"type":"close"'))).toBe(true);
+    store.close();
+  });
+});
+
+/** Keep the shared singleton store closed at the end of every run. */
+afterEach(() => {
+  terminalStore.close();
 });

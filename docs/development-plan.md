@@ -131,20 +131,37 @@ production"` 示例 — 与终端 Config 无关，会被误解（改为真实示
 
 ## 4. 功能路线
 
-### v0.2 鲁棒性与体验（推荐先做，均可在现有单测体系内落地）
+### v0.2 鲁棒性与体验（✅ 已完成，commit `a021ce8`，版本 0.2.0）
 
 - **F1 多终端 tab**：popover 内横向 tab 条；每 tab 一个 pty（`maxPerSession`
-  同时约束 UI tab 数）；tab 独立关闭/重命名；tab 状态按会话保留。参考
-  better-sidebar 的 tab 语义（其 client 以该数为上限）。
+  同时约束 UI tab 数）；tab 独立关闭；`terminal-store.ts` 持有 tab 集合，
+  **所有 tab 常驻渲染**（非活跃 `display:none`）——切 tab 不断 pty 连接，
+  关 tab/收起 popover 才卸载并发最终 close 帧。参考 better-sidebar 的 tab 语义。
 - **F2 node-pty 不可用修复横幅**：client 收到 1011 时渲染横幅，展示修复
-  命令（`pnpm approve-builds --all && pnpm rebuild node-pty`，限定 profile
-  路径）+ 重试按钮；host 侧保留 warn 日志。参考 better-sidebar #140。
-- **F3 会话删除即关**：host 订阅 `session/disposed`（或等价事件），关闭该
-  会话全部 pty + 释放配额，不等 30s 宽限。参考 #130。
-- **F4 cwd 权威性**：`open()` 时若已存在 live handle 但 spawn cwd ≠ 本次
-  权威 cwd（header 迟到/进程目录兜底），重开 shell。参考 pty-manager.ts。
-- **F5 状态可见性**：popover 标题栏显示 shell 名（bash/zsh/powershell）+ 当前
-  会话 cwd；退出码回显（已有 `[process exited with code N]`，保留）。
+  命令（`pnpm approve-builds --all && pnpm rebuild node-pty`）+ 重试按钮
+  （`attempt` 状态驱动重连）；host 侧保留 warn 日志。参考 better-sidebar #140。
+- **F3 会话删除即关**：host 订阅 `session/disposed`（payload 防御式解析
+  session.id），`PtyManager.closeSession()` 关闭该会话全部 pty（含 parked +
+  pending grace），不等 30s 宽限。参考 #130。
+- **F4 cwd 权威性**：`open()` 已实现 spawn cwd ≠ 权威 cwd 时重开 shell
+  （hydrate 竞态），本轮补测试锁定（`respawns when the authoritative cwd
+differs on reconnect`）。
+- **F5 状态可见性**：host 首个 **meta 帧** `{"type":"meta","shell","cwd",
+"maxPerSession"}`；popover 标题栏显示 `shell · cwd`；退出码回显保留。
+
+**v0.2 实测中发现并修复（均在 `a021ce8`）**：
+
+- **close 帧 send-then-close 竞态**：浏览器同步 `send(close)` 后立即
+  `ws.close()` 会丢帧，host 只走 30s grace 回收。现改为：tab 被移除时由
+  TerminalView 的 store 订阅在**卸载前**发送 close 帧（此时 socket 全开，
+  可靠）；park 帧（会话切换）则 send 后延迟 50ms 关闭 socket。
+- **pnpm file: 依赖缓存不感知 tgz 内容变化**：`pnpm install` 对
+  `file:...tgz` 按路径缓存，重新打包同版本号不重装 → 必须
+  `pnpm install --force`（或换版本号）。web-test 验证时因此差点测到旧包。
+- **`dsh plugin add` 整写 profile 状态**：add -w 会重置
+  `cordis.patch.yml` 为 `[]` 并重写 package.json（剔掉其它插件、bundles）。
+  顺序坑：先 add，再写 user-layer patch 的 config（否则 Config schema
+  `Required` 启动失败），再用 `pnpm install --force` 恢复共存依赖。
 
 ### v0.3 可配置性
 
@@ -244,3 +261,17 @@ close/park 修复已由 3 个新单测（close 帧赢过 grace / 死键 park 不
 
 **下一步**：修复已提交（0.1.x 未发布、未装主实例）。按 §4 v0.2 列表推进
 F1-F5；`web profile` 沙箱模式核实（F9）先行。
+
+**v0.2 端到端（2026-08-28，通过）**：0.2.0 装上 web-test（`pnpm
+install --force` 后确认 bundle hash 一致）→ playwright（独立会话目录
+`...-v02`）全链路：console 0 errors、按钮 → popover（标题栏 `bash ·
+/data/disk/dsh-workspaces/personal`）→ tab 条 1 tab + 「+」→ 加第 2 tab
+（pty 进程 1→2）→ `echo v02-multi-tab` 回显 + 新提示符 → 关 tab：tabs
+2→1、popover 保持打开、**pty 进程 2→1 立即回收**（close 帧竞态修复生效）。
+
+**F9 结论（已核）**：web profile 的 `sandbox-policy` 配置为
+`mode: process.env.DSH_PERMISSION_MODE ?? 'workspace-write'`；当前运行实例
+（主 web 与 web-test）env 均未设置该变量，即**默认受限模式**（GUI 显示
+Full access 属 UI 层切换）。我们的终端直启 shell 故**绕过 sandboxPolicy**——
+对用户手动终端这是有意豁免（等同用户在服务器上开 shell），但已在 README/
+规划中记录为安全边界；待 v1.0 模型工具（F8）走官方缝时天然对齐沙箱语义。

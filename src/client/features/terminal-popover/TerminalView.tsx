@@ -3,24 +3,65 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { t } from "./i18n.ts";
-import { popoverStore } from "./popover-store.ts";
+import { terminalStore, type TerminalStore } from "./terminal-store.ts";
 import styles from "./terminal.module.css";
+
+/** Host metadata frame content (sent first on every attach). */
+export interface TerminalMeta {
+  shell: string;
+  cwd: string;
+  maxPerSession: number;
+}
+
+export interface TerminalViewProps {
+  sessionId?: string | undefined;
+  /** The store-owned tab id; the host keys its pty on `${sessionId}:${tabId}`. */
+  tabId: string;
+  /** Receives the host meta frame (shell/cwd/cap) for the popover header. */
+  onMeta?: (meta: TerminalMeta) => void;
+  /** Injectable for tests; defaults to the module-level shared store. */
+  store?: TerminalStore;
+}
 
 /**
  * One xterm view bound to the host pty bridge.
  *
  * The WebSocket uses a relative URL (same origin as the page, resolved by the
  * browser); the host keeps the pty alive across a session switch (the view
- * sends a park frame) and across page refreshes (grace window).
+ * sends a park frame) and across page refreshes (grace window). The wire
+ * frame on teardown is decided from the store: a tab that still exists and
+ * the popover that is still open mean a switch (park); anything else means a
+ * close (kill).
  */
-export function TerminalView({ sessionId }: { sessionId?: string | undefined }) {
+export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const tabRef = useRef<string>(createTabId());
   const mountedRef = useRef(true);
+  const closedRef = useRef(false);
   const [phase, setPhase] = useState<"connecting" | "open" | "failed">("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  // When this tab is removed from the store, its pane unmounts next render.
+  // Send the final close frame HERE (the socket is still fully open) instead
+  // of relying on the cleanup below: a synchronous send-then-close race in
+  // the browser's WebSocket may drop the frame, and the host would only
+  // reclaim the pty after the reconnect grace window.
+  useEffect(() => {
+    const viewStore = store ?? terminalStore;
+    const unsubscribe = viewStore.subscribe(() => {
+      if (closedRef.current) return;
+      if (!viewStore.hasTab(tabId) && viewStore.isOpen()) {
+        const ws = wsRef.current;
+        if (ws !== null && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "close" }));
+          closedRef.current = true;
+        }
+      }
+    });
+    return unsubscribe;
+  }, [tabId, store]);
 
   // One xterm instance per view lifetime.
   useEffect(() => {
@@ -64,23 +105,25 @@ export function TerminalView({ sessionId }: { sessionId?: string | undefined }) 
     return () => {
       mountedRef.current = false;
       observer?.disconnect();
-      const ws = wsRef.current;
-      if (ws !== null && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "close" }));
-        ws.close();
-      }
-      wsRef.current = null;
+      // The WebSocket lifecycle belongs to the connect effect below: its
+      // cleanup decides the wire frame (park on a session switch while the
+      // popover stays open, close when the popover collapses). Sending any
+      // frame here would race that cleanup - React runs this mount cleanup
+      // FIRST, so a close frame sent from here always wins and kills a pty
+      // that should have been parked.
       term.dispose();
       termRef.current = null;
     };
   }, []);
 
-  // Connect (or re-connect to) the terminal of the current session.
+  // Connect (or re-connect to) the terminal of the current session. `attempt`
+  // re-runs this effect when the user clicks "retry" after a failed attach.
   useEffect(() => {
+    const viewStore = store ?? terminalStore;
     const term = termRef.current;
     if (term === null || sessionId === undefined) return;
     const ws = new WebSocket(
-      `/dock-terminal/ws?sessionId=${encodeURIComponent(sessionId)}&tab=${encodeURIComponent(tabRef.current)}`,
+      `/dock-terminal/ws?sessionId=${encodeURIComponent(sessionId)}&tab=${encodeURIComponent(tabId)}`,
     );
     wsRef.current = ws;
     setPhase("connecting");
@@ -95,13 +138,32 @@ export function TerminalView({ sessionId }: { sessionId?: string | undefined }) 
       ws.send(JSON.stringify({ type: "resize", cols, rows }));
     };
     ws.onmessage = (event) => {
-      if (typeof event.data === "string") term.write(event.data);
+      if (typeof event.data !== "string") return;
+      let meta: TerminalMeta | null = null;
+      try {
+        const parsed: unknown = JSON.parse(event.data);
+        if (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          (parsed as Record<string, unknown>)["type"] === "meta"
+        ) {
+          meta = parsed as TerminalMeta;
+        }
+      } catch {
+        // Not a control frame: it is raw pty output.
+      }
+      if (meta !== null) {
+        viewStore.setMaxPerSession(meta.maxPerSession);
+        onMeta?.(meta);
+      } else {
+        term.write(event.data);
+      }
     };
     ws.onclose = (event) => {
       if (!mountedRef.current) return;
       if (!opened && event.code === 1011) {
         setPhase("failed");
-        setError(event.reason || "terminal unavailable");
+        setError(event.reason || t("unavailable"));
       } else if (!opened) {
         setPhase("failed");
         setError(event.reason || "connection closed");
@@ -113,30 +175,45 @@ export function TerminalView({ sessionId }: { sessionId?: string | undefined }) 
       if (!mountedRef.current) return;
     };
     return () => {
-      // Distinguish the two unmount reasons at the wire level:
-      // - the popover is closed (store closed): final close frame, kill the pty;
-      // - the session changed while the popover stays open: park frame, the
-      //   host keeps the shell alive until the user switches back.
-      const frame = popoverStore.isOpen() ? "park" : "close";
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: frame }));
+      // The store-subscription effect above already sent the final close
+      // frame when this tab was removed; only close the socket then. For a
+      // session/tab switch (park frame) give the frame a beat to leave the
+      // browser queue before closing: a synchronous close() may race the
+      // outbound frame and the host would fall back to the grace window.
+      if (ws.readyState !== WebSocket.OPEN) {
+        wsRef.current = null;
+        ws.close();
+        return;
       }
+      if (closedRef.current) {
+        wsRef.current = null;
+        ws.close();
+        return;
+      }
+      const stillOpen = viewStore.isOpen() && viewStore.hasTab(tabId);
+      ws.send(JSON.stringify({ type: stillOpen ? "park" : "close" }));
       wsRef.current = null;
-      ws.close();
+      setTimeout(() => ws.close(), 50);
     };
-  }, [sessionId]);
+    // onMeta is the popover's stable setState; attempt drives the retry button.
+  }, [sessionId, tabId, attempt, onMeta, store]);
 
   return (
     <div className={styles["terminal"]}>
       {phase === "failed" ? (
-        <div className={styles["fallback"]}>{error ?? t("placeholder")}</div>
+        <div className={styles["fallback"]}>
+          <div className={styles["fallbackText"]}>{error ?? t("unavailable")}</div>
+          <div className={styles["fallbackHint"]}>{t("repairHint")}</div>
+          <button
+            type="button"
+            className={styles["retry"]}
+            onClick={() => setAttempt((v) => v + 1)}
+          >
+            {t("retry")}
+          </button>
+        </div>
       ) : null}
       <div ref={containerRef} className={styles["host"]} />
     </div>
   );
-}
-
-/** Per-view tab id, stable across reconnects and session switches. */
-function createTabId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }

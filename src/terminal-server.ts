@@ -80,6 +80,17 @@ export function attachTerminal(
     return;
   }
 
+  // First frame: terminal metadata (shell name, cwd, per-session cap) so the
+  // client can render the header and enforce the tab limit. Then the bounded
+  // transcript replay, then live pty output.
+  ws.send(
+    JSON.stringify({
+      type: "meta",
+      shell: manager.shellName(),
+      cwd: handle.cwd,
+      maxPerSession: config.maxPerSession,
+    }),
+  );
   if (handle.transcript !== "") ws.send(handle.transcript);
   const onData = (data: string) => {
     if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 4 * 1024 * 1024) ws.send(data);

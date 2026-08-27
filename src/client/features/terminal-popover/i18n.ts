@@ -15,13 +15,25 @@ export const LOCALES: {
     title: "终端",
     open: "打开终端",
     close: "收起",
-    placeholder: "此主机上 node-pty 不可用，终端无法启动",
+    newTab: "新建终端",
+    closeTab: "关闭终端",
+    retry: "重试",
+    unavailable: "此主机上 node-pty 不可用，终端无法启动",
+    repairHint:
+      "修复方法：在 dsh 环境的 profile 目录执行 pnpm approve-builds --all && pnpm rebuild node-pty，然后重启 dsh",
+    limitReached: "已达到本会话终端上限",
   },
   en: {
     title: "Terminal",
     open: "Open terminal",
     close: "Collapse",
-    placeholder: "node-pty is unavailable on this host; the terminal cannot start",
+    newTab: "New terminal",
+    closeTab: "Close terminal",
+    retry: "Retry",
+    unavailable: "node-pty is unavailable on this host; the terminal cannot start",
+    repairHint:
+      "To fix: run pnpm approve-builds --all && pnpm rebuild node-pty in the dsh profile directory, then restart dsh",
+    limitReached: "Terminal limit reached for this conversation",
   },
 };
 

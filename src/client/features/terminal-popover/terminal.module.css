@@ -1,5 +1,5 @@
 /* Terminal popover (conversation.composer.dock): a compact panel under the
- * composer card, hosting the xterm view. */
+ * composer card, hosting the xterm view and its tab bar. */
 .popover {
   width: 100%;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
@@ -25,6 +25,20 @@
   font-weight: 600;
   letter-spacing: 0.02em;
   opacity: 0.85;
+  flex: none;
+}
+
+.meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.55;
+  text-align: center;
 }
 
 .close {
@@ -37,6 +51,7 @@
   border-radius: 6px;
   cursor: pointer;
   opacity: 0.7;
+  flex: none;
 }
 
 .close:hover {
@@ -44,10 +59,94 @@
   opacity: 1;
 }
 
+/* Tab bar: one slot per open terminal, plus the "+" button. */
+.tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  min-height: 26px;
+}
+
+.tab,
+.tabActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 160px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tabActive {
+  border-color: color-mix(in srgb, currentColor 38%, transparent);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabClose {
+  flex: none;
+  padding: 0 2px;
+  border-radius: 4px;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.tabClose:hover {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  opacity: 1;
+}
+
+.tabAdd {
+  flex: none;
+  width: 24px;
+  border: 1px dashed color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.tabAdd:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 1;
+}
+
+.tabAdd:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 .body {
   position: relative;
   height: 280px;
   border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* One pane per terminal tab; inactive panes stay mounted but hidden so
+ * switching tabs never drops the pty socket. */
+.pane,
+.paneHidden {
+  position: absolute;
+  inset: 0;
+}
+
+.paneHidden {
+  display: none;
 }
 
 .terminal {
@@ -65,17 +164,46 @@
   height: 100%;
 }
 
+/* Failure state: the host refused the attach (node-pty missing or the
+ * per-session cap reached). Rendered over the empty canvas area. */
 .fallback {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   font-size: 12px;
-  opacity: 0.6;
+  opacity: 0.75;
   padding: 0 16px;
   text-align: center;
   z-index: 1;
+}
+
+.fallbackText {
+  font-weight: 600;
+}
+
+.fallbackHint {
+  font-size: 11px;
+  opacity: 0.8;
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+.retry {
+  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
