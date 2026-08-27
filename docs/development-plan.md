@@ -171,15 +171,23 @@ differs on reconnect`）。
 - **F7（并入）方言细节对齐**：bash 交互参数 `-i`（现状 `-l`）、pwsh
   UTF-8 钉住（Windows 冒烟时验证）。
 
-### v1.0 模型协同（可选，独立评估）
+### v1.0 模型协同（✅ 已完成，commit `d60be6c`，版本 0.3.0，路线 B）
 
-- **F8 模型 terminal 工具**：`terminal_create/send/read/list/signal/close`
-  供 agent 使用，与 UI 共享 pty 注册表（模型开的终端 popover 可见，用户开
-  的终端模型可读）。两条路线：
-  - A. 自研注册表（参考 better-sidebar agent-pty.ts，uuid 键、有界读页）
-  - B. 官方 `dsh-terminal` + `terminal-bash` + `dsh-tool-terminal`
-    **推荐 B**：语义（所有权/取消/清理/就绪）官方已打磨，且与宿主后续
-    工具生态一致；代价是输出行规范化（模型读行足够）。
+- **路线 B（官方缝）落地**：`@deepseek-ai/dsh-terminal` +
+  `dsh-terminal-bash` 从 dsh 全局 node_modules 解析（profile **无需装包**，
+  patch `insert` 两行即挂载）；后端在受限模式下自动包
+  `sandboxPolicy`（安全语义免费获得），自带就绪检测与 UTF-8 处理。
+- **F8 工具集**：`terminal_create`（spawn + 可选首命令等待就绪）/
+  `terminal_send`（startSend + done 等待，返回 viewport/waitReason）/
+  `terminal_read`（scrollback 分页，newest-relative offset）/
+  `terminal_list` / `terminal_signal` / `terminal_close`。owner 严格绑定
+  `exec.agent`（会话间不可互访）；`ctx.terminals` 未挂载时优雅降级
+  （跳过工具集 + warn，UI 终端不受影响）。
+- **验证**：11 个工具单测（调用映射/owner 传递/错误包装/降级）+ verify
+  全绿（46 tests，覆盖率达标）；web-test 挂缝后重启：配置树三行就位、
+  启动 0 错误、console 0 errors。真实模型调用冒烟待主人使用反馈。
+- **部署注意**：主 profile 挂缝需在 user-layer patch 用 `insert` 形式
+  （id-targeted 只修改已有行，dsh-terminal 不在任何 bundle 层）。
 
 ### 安全 / 平台（贯穿）
 

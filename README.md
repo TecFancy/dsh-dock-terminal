@@ -64,6 +64,17 @@ Requires `@deepseek-ai/cordis` `^4.0.1` as a peer dependency and the
 `dsh-dock-host` client service `dockButtons` (the popover button is
 registered through it).
 
+## Model terminal tools (optional)
+
+The host half also registers six model-facing tools — `terminal_create`,
+`terminal_send`, `terminal_read`, `terminal_list`, `terminal_signal`,
+`terminal_close` — so an agent can open a persistent interactive shell, run
+commands, read bounded scrollback pages and close it. They ride the official
+`@deepseek-ai/dsh-terminal` seam: the profile must mount `terminal` and
+`terminal-bash` rows (an `insert` patch; no npm install needed, the packages
+resolve from the dsh global node_modules). Without the seam the plugin keeps
+working for the UI popover and simply skips the tool set.
+
 ## Config
 
 | Key                | Default              | Purpose                                     |
