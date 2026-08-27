@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import { Config, type TerminalConfig } from "./config.js";
+import { registerAgentTerminalTools, type TerminalsLike } from "./features/agent-terminal/index.js";
 import { ensureSpawnHelper, loadNodePty, PtyManager } from "./pty.js";
 import { attachTerminal, isTrustedRequest } from "./terminal-server.js";
 
@@ -24,7 +25,7 @@ import { attachTerminal, isTrustedRequest } from "./terminal-server.js";
  */
 export const name = "dsh-dock-terminal";
 
-export const inject = ["webServer"] as const;
+export const inject = ["webServer", "tools"] as const;
 
 export { Config };
 
@@ -79,6 +80,22 @@ export function apply(ctx: RuntimeContext, config: unknown): void {
     },
     "dsh-dock-terminal: teardown",
   );
+
+  // Model terminal tools ride the optional official seam: without it the
+  // plugin keeps working for the UI popover and only skips the tool set.
+  const terminals = ctx.get("terminals") as TerminalsLike | undefined;
+  if (terminals === undefined) {
+    ctx
+      .logger?.("dsh-dock-terminal")
+      .warn(
+        "ctx.terminals not mounted; model terminal tools are skipped (mount @deepseek-ai/dsh-terminal + dsh-terminal-bash to enable)",
+      );
+  } else {
+    ctx.effect(
+      () => registerAgentTerminalTools(ctx, terminals),
+      "dsh-dock-terminal: model terminal tools",
+    );
+  }
 }
 
 /** Minimal context surface the host half touches (structural, no hard deps). */
@@ -89,6 +106,7 @@ interface RuntimeContext {
       handler(req: unknown, socket: unknown, head: unknown): void | Promise<void>;
     }): () => void;
   };
+  tools: { register(definition: unknown): () => void };
   on(event: string, handler: (payload?: unknown) => void): () => void;
   get(name: string): unknown;
   effect(fn: () => unknown, label?: string): unknown;

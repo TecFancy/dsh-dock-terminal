@@ -76,6 +76,7 @@ describe("apply (host root)", () => {
           return () => undefined;
         },
       },
+      tools: { register: () => () => undefined },
       on: () => () => undefined,
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
@@ -112,6 +113,7 @@ describe("apply (host root)", () => {
           return () => undefined;
         },
       },
+      tools: { register: () => () => undefined },
       on: () => () => undefined,
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
@@ -133,6 +135,7 @@ describe("apply (host root)", () => {
           return () => undefined;
         },
       },
+      tools: { register: () => () => undefined },
       on: () => () => undefined,
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
@@ -156,6 +159,7 @@ describe("apply (host root)", () => {
         handlers.push(handler);
         return () => undefined;
       },
+      tools: { register: () => () => undefined },
       get: () => undefined,
       logger: () => ({ warn: () => undefined }),
       effect: (fn: () => unknown) => fn(),
@@ -167,6 +171,56 @@ describe("apply (host root)", () => {
     expect(() => handlers[0]!("s1")).not.toThrow();
     expect(() => handlers[0]!({ id: "s1" })).not.toThrow();
     expect(() => handlers[0]!(undefined)).not.toThrow();
+  });
+
+  it("registers the model terminal tools when the official seam is mounted", () => {
+    const registered: { name?: string }[] = [];
+    const ctx = {
+      webServer: {
+        registerUpgrade: (_route: { path: string; handler: unknown }) => () => undefined,
+      },
+      tools: {
+        register: (definition: unknown) => {
+          registered.push(definition as { name?: string });
+          return () => undefined;
+        },
+      },
+      on: () => () => undefined,
+      get: (name: string) => (name === "terminals" ? { spawn: () => undefined } : undefined),
+      logger: () => ({ warn: () => undefined }),
+      effect: (fn: () => unknown) => fn(),
+    };
+    apply(ctx, {});
+    expect(registered).toHaveLength(6);
+    expect(registered.map((t) => t.name).sort()).toEqual([
+      "terminal_close",
+      "terminal_create",
+      "terminal_list",
+      "terminal_read",
+      "terminal_send",
+      "terminal_signal",
+    ]);
+  });
+
+  it("skips the model terminal tools gracefully when the seam is absent", () => {
+    const registered: unknown[] = [];
+    const ctx = {
+      webServer: {
+        registerUpgrade: (_route: { path: string; handler: unknown }) => () => undefined,
+      },
+      tools: {
+        register: (definition: unknown) => {
+          registered.push(definition);
+          return () => undefined;
+        },
+      },
+      on: () => () => undefined,
+      get: () => undefined,
+      logger: () => ({ warn: () => undefined }),
+      effect: (fn: () => unknown) => fn(),
+    };
+    expect(() => apply(ctx, {})).not.toThrow();
+    expect(registered).toHaveLength(0);
   });
 });
 
