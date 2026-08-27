@@ -1,0 +1,208 @@
+# dsh-dock-terminal 开发规划
+
+> 状态：进行中（2026-08-27 立档）
+> 对齐目标：dsh runtime `0.1.1-rc.2`（与 dsh-plugin-framework 的
+> `docs/current-dsh-migration.md` 一致）；宿主 = dsh-web-app，已有
+> `@tecfancy/dsh-dock-host@0.2.0`（dockButtons 注册表 + composer 槽）。
+
+## 0. 结论先行
+
+- **后端选型：维持 node-pty 直连**，不迁移官方 `@deepseek-ai/dsh-terminal` 缝。
+  官方 bash 后端输出按行规范化、不支持全屏备用缓冲区（vim/top 会挂），
+  它是为**模型消费**（有界行输出 + 就绪检测）设计的；UI 终端要的是真实
+  xterm 渲染。官方缝留作未来「模型 terminal 工具」的可选底座。
+- **功能定位：composer 下方的就地 popover 终端**，与 better-sidebar 的侧边栏
+  终端互补（better-sidebar 已装 v0.16.1，其文件/浏览器/Git 价值保留，终端
+  以我们的为主）。
+- **当前代码已具 v0.1.0 完整形态**（commit `817ded9`）：node-pty +
+  `/dock-terminal/ws` 桥、信任围栏、transcript 回放、park/grace 生命周期、
+  xterm 渲染、i18n、单测。**尚未安装部署**，profile 的 cordis.patch.yml 已
+  预置对应 config。
+- **下一步以「验证 + 迭代」为主**：先跑通 `npm run verify` 全门禁 →
+  测试 profile 实装 + playwright 端到端 → 正式部署；功能按 v0.2 鲁棒性 /
+  v0.3 可配置性 / v1.0 模型协同 三阶段迭代（见 §4）。
+
+## 1. 参考资源调研
+
+### 1.1 官方 `@deepseek-ai/dsh-terminal`（PTY 缝）
+
+定位：所有者（agent）限定的持久 PTY seam，注册为 `ctx.terminals`；具名后端
+注册、不透明会话 id、spawn/send/read/signal/close 全生命周期，dispose 与
+清理失败显式化（`TerminalBackendCleanupError`），`waitReason` 与
+`sessionStatus` 相互独立。
+
+对我们有用的点：
+
+- **所有权模型**：会话绑定完全相同的活跃 Agent，agent/service dispose 时
+  等待后端停稳 — 若我们以后做「模型终端」，这套语义直接可用。
+- **清理/失败语义的严谨度**：取消保留确切原因、清理失败不谎称成功、可重试。
+- 明确的边界：缝不含 node-pty、沙箱、工具 schema、渲染策略 — 机制归它，
+  呈现归消费方。
+
+不采用的原因：
+
+- 当前 web profile 未挂载该缝（dsh-base 只有 subprocess/sandbox/沙箱方言，
+  无 `terminal`/`terminal-bash` 行），接入需额外引入 + 依赖
+  `subprocess.spawnTerminal` 提供方。
+- 它是「机制缝」+「模型消费」导向，UI 直接消费它收益低（输出被行规范化）。
+
+### 1.2 官方 `@deepseek-ai/dsh-terminal-bash`（bash/pwsh 后端）
+
+定位：基于 `ctx.subprocess.spawnTerminal` + `ctx.sandboxPolicy` 的持久 shell
+后端；bash/pwsh 方言选择、提示符标记就绪检测（OSC 133;D + 前台 stdin 等待
+
+- 静默回退 + 绝对超时）、UTF-8 钉住、清理保证。
+
+对我们有用的点：
+
+- **sandboxPolicy 集成**：受限模式用 `ctx.sandbox` 包装 shell argv；模式变更
+  前后拒绝不一致 → 我们目前直接 `nodePty.spawn`，**未包沙箱**。需要核对
+  web profile 的沙箱模式：若受限模式部署，这是安全差距（列入 §5 待确认）。
+- **spawn-helper 修复**（pnpm 剥离可执行位）— 我们已实现（`ensureSpawnHelper`）。
+- 方言/编码细节：pwsh 需 `NO_COLOR` + `[Console]::OutputEncoding` 钉 UTF-8；
+  bash 用 `-i` 交互。我们目前默认 `-l` + `$SHELL`，够用但可对齐。
+- 就绪检测对 UI 终端无意义（xterm 全量渲染），**不引入**。
+
+### 1.3 `omdsh-dev/DSH-better-sidebar`（最贴近的完整产品参考）
+
+定位：侧边栏服务化框架，终端为内置 tab（xterm.js + node-pty +
+`/sidebar/ws/terminal` WebSocket，断线重连回放，可选模型 `terminal_*`
+工具）。README + 源码（pty-manager.ts / agent-pty.ts / TerminalView.tsx /
+index.ts）已逐项读过。
+
+可借鉴（含其 PR 号）：
+
+| 模式                                                                    | 出处                       | 我们的现状 / 计划                                                           |
+| ----------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- |
+| node-pty 懒加载，缺失不拖垮 server，横幅给修复命令 + 重试               | #140                       | 已懒加载（`loadNodePty` 返回 null 仍挂载）；**缺**客户端修复横幅（v0.2 F2） |
+| shell / shellArgs 经 `cordis.patch.yml` 或设置页配置                    | #125 / #232                | 已有 config schema + profile patch 预置；**缺**设置页 UI（v0.3 F6）         |
+| 会话删除立即关闭该会话终端（订阅 session/disposed）                     | #130                       | **缺**（当前等 30s 宽限，v0.2 F3）                                          |
+| spawn cwd 与重连时权威 cwd 不一致 → 重开 shell（hydrate 竞态）          | pty-manager.ts             | **缺**：首次连接可能落在 `process.cwd()`，重连换目录不生效（v0.2 F4）       |
+| 模型 `terminal_create/send/read/list/signal/close` 工具，与 UI 共享 pty | agent-pty.ts               | **缺**（v1.0 F7，可选）                                                     |
+| 断线重连回放（bounded transcript ring，1MB）                            | pty-manager / TerminalView | **已有**（`TRANSCRIPT_LIMIT` 一致）                                         |
+| park（会话切换不 TTL）+ 裸断线 grace                                    | #130 同源语义              | **已有**                                                                    |
+| xterm 依赖 `@xterm/xterm` 5.x 迁移                                      | #122/#128                  | 已用 `@xterm/xterm@5.5` + `@xterm/addon-fit@0.10`                           |
+| Windows 适配（COMSPEC/powershell、预编译二进制）                        | README 平台段              | 已处理（默认 shell/参数、spawn-helper 跳过 win32）                          |
+
+差异（我们保持）：
+
+- 位置：`conversation.composer.dock` 弹层（工作流近旁），非侧边栏 tab 系统。
+- 集成：dock-host `dockButtons` 注册表，而不是 betterSidebar API。
+- 重量级：不引入侧边栏/持久化/懒加载分块体系，原子做终端。
+
+## 2. 现状盘点
+
+**仓库**（`@tecfancy/dsh-dock-terminal@0.1.0`，独立 git，commit `817ded9`）：
+
+```
+src/index.ts        host 根：/dock-terminal/ws upgrade 路由 + 装配
+src/config.ts       Config（shell/shellArgs/maxPerSession/reconnectGraceMs）
+src/pty.ts          PtyManager（每 `${sessionId}:${tabId}` 一个 node-pty，
+                    1MB transcript ring、park/scheduleClose、懒加载+spawn-helper）
+src/terminal-server.ts  协议：文本=stdin；JSON 帧 close/park/resize；
+                    isTrustedRequest（loopback / 同源 origin 围栏）；
+                    会话 cwd（session header → process.cwd()）
+src/client/
+  index.tsx         dock 按钮（order 10, primary）+ composer.dock 槽位
+  features/terminal-popover/  TerminalPopover/TerminalView/popover-store/i18n
+  shared/config/context.ts   结构契约（slots/locale/dockButtons）
+```
+
+**部署**：web profile 未安装；`~/.dsh/profiles/web/cordis.patch.yml` 已预置
+`dsh-dock-terminal` config（shell/shellArgs/maxPerSession/reconnectGraceMs，
+键与 Config schema 一致，说明部署侧已就绪）。
+
+**已知瑕疵**（规划期内顺手修）：
+
+- `deploy/cordis.patch.yml` 还是框架模板的 `defaultGreeting: "Hello from
+production"` 示例 — 与终端 Config 无关，会被误解（改为真实示例键）。
+- `repos/README.md`（根工作区索引）仍写 terminal「待迁移」，已过时。
+- `lib/` 产物未构建（无 node_modules / 未跑 verify）— 部署前必须全绿。
+
+## 3. 关键架构决策
+
+| #   | 决策                                                                | 依据                                                                                                    |
+| --- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| D1  | UI 终端后端 = node-pty 直连；官方缝不引入                           | 真实全屏终端（alt buffer）；无 subprocess 提供方依赖；与 better-sidebar 同级验证                        |
+| D2  | 官方 `dsh-terminal`+`terminal-bash` 仅作为**未来模型工具底座**评估  | 若做 v1.0 模型工具，优先复用官方缝 + `dsh-tool-terminal` 语义（行输出、就绪、取消），避免自研 agent-pty |
+| D3  | 客户端渲染 = `@xterm/xterm` 5.x + fit addon，单文件 bundle 内联 CSS | 官方 client 装载契约；已在 tsdown 定制插件中实现                                                        |
+| D4  | 安全 = 信任围栏 + 会话隔离 + cwd 权威性；沙箱对齐待核（§5）         | isTrustedRequest 同源/loopback；每会话配额；spawn 以会话 cwd 为基准                                     |
+| D5  | 与 better-sidebar 共存，不做终端功能合并                            | better-sidebar 终端在侧边栏 tab；我们在 composer 下方；用户选择权保留                                   |
+
+## 4. 功能路线
+
+### v0.2 鲁棒性与体验（推荐先做，均可在现有单测体系内落地）
+
+- **F1 多终端 tab**：popover 内横向 tab 条；每 tab 一个 pty（`maxPerSession`
+  同时约束 UI tab 数）；tab 独立关闭/重命名；tab 状态按会话保留。参考
+  better-sidebar 的 tab 语义（其 client 以该数为上限）。
+- **F2 node-pty 不可用修复横幅**：client 收到 1011 时渲染横幅，展示修复
+  命令（`pnpm approve-builds --all && pnpm rebuild node-pty`，限定 profile
+  路径）+ 重试按钮；host 侧保留 warn 日志。参考 better-sidebar #140。
+- **F3 会话删除即关**：host 订阅 `session/disposed`（或等价事件），关闭该
+  会话全部 pty + 释放配额，不等 30s 宽限。参考 #130。
+- **F4 cwd 权威性**：`open()` 时若已存在 live handle 但 spawn cwd ≠ 本次
+  权威 cwd（header 迟到/进程目录兜底），重开 shell。参考 pty-manager.ts。
+- **F5 状态可见性**：popover 标题栏显示 shell 名（bash/zsh/powershell）+ 当前
+  会话 cwd；退出码回显（已有 `[process exited with code N]`，保留）。
+
+### v0.3 可配置性
+
+- **F6 设置页 UI**：经 `settings.section` 槽位提供 shell / shellArgs /
+  maxPerSession 配置（写回通道需先调研：better-sidebar 有设置页写入后对
+  后续终端生效，其实现经 host RPC + 存储；我们可做同样结构，或先支持
+  cordis.patch.yml 热更提示）。参考 #232。
+- **F7（并入）方言细节对齐**：bash 交互参数 `-i`（现状 `-l`）、pwsh
+  UTF-8 钉住（Windows 冒烟时验证）。
+
+### v1.0 模型协同（可选，独立评估）
+
+- **F8 模型 terminal 工具**：`terminal_create/send/read/list/signal/close`
+  供 agent 使用，与 UI 共享 pty 注册表（模型开的终端 popover 可见，用户开
+  的终端模型可读）。两条路线：
+  - A. 自研注册表（参考 better-sidebar agent-pty.ts，uuid 键、有界读页）
+  - B. 官方 `dsh-terminal` + `terminal-bash` + `dsh-tool-terminal`
+    **推荐 B**：语义（所有权/取消/清理/就绪）官方已打磨，且与宿主后续
+    工具生态一致；代价是输出行规范化（模型读行足够）。
+
+### 安全 / 平台（贯穿）
+
+- **F9 sandboxPolicy 对齐**：核对 web profile 沙箱模式；若受限模式部署，
+  shell spawn 需包 `ctx.sandbox` argv 或明确拒绝并提示（官方 terminal-bash
+  语义）。若部署为 danger-full-access 且长期如此，记录为已知边界。
+- **F10 Windows 冒烟**：COMSPEC / powershell.exe 默认路径、spawn-helper
+  跳过逻辑、UTF-8 编码。
+
+## 5. 工程与部署流程
+
+1. **门禁**：`npm install`（node-pty 需预编译；避免 pnpm 11 拦截构建脚本，
+   仓库已配 `allowScripts`）→ `npm run verify` 全绿（format/lint/no-emdash/
+   aliases/type-check/test:coverage≥70%/build/bundle:check/skills:check）。
+2. **测试 profile 实装**：按 `.dsh/skills/dsh-extension-testing/SKILL.md` 流程
+   建独立 profile → link 安装 → playwright 端到端：开终端 → 输入 `echo hi`
+   → 输出回显 → 关闭 → 会话切换 park → 重连回放 → 刷新宽限。
+3. **正式部署**：`dsh plugin --profile web add @tecfancy/dsh-dock-terminal@<ver>`
+   （link 或 registry）→ 重启 dsh web → 手工冒烟（与 better-sidebar
+   并存确认）。
+4. **文档同步**：更新 `repos/README.md` 状态行；本计划随迭代更新；发布后
+   更新仓库 README 的安装命令与版本号。
+
+## 6. 风险与待确认
+
+| 风险/待确认                  | 说明                                                 | 应对                                                                   |
+| ---------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| better-sidebar 终端功能重叠  | 两个终端并存可能让用户困惑                           | D5 共存，README/Q&A 讲清差异；若主人决定二选一再收                     |
+| node-pty 预编译失败          | 平台/Node 版本无对应产物                             | 懒加载 + F2 修复横幅；备选：编译工具链                                 |
+| web profile 沙箱模式         | 未核；若受限模式，直启 shell 是安全差距              | F9 先核后做；纳入 v0.2 验收                                            |
+| 设置写入通道不确定           | `settings.section` 写回 config 的宿主机制未调研      | F6 开工前先做 30 分钟调研（读 dsh-web 设置服务 + better-sidebar 实现） |
+| profile patch 与 schema 漂移 | id-targeted patch 整行替换 config                    | deploy 模板修复 + 部署时全键对齐（现状已对齐）                         |
+| 模型工具所有权设计           | F8 若走自研，需处理与 UI 注册表并发、会话/agent 归属 | 选 B（官方缝）规避；A 时参考 agent-pty.ts 的 owner-scoped 模型         |
+
+## 7. 参考链接
+
+- 官方缝：`packages/terminal/terminal/README.zh.md`、
+  `packages/terminal/terminal-bash/README.zh.md`（deepseek-harness）
+- better-sidebar：<https://github.com/omdsh-dev/DSH-better-sidebar>
+  （pty-manager.ts / agent-pty.ts / TerminalView.tsx / index.ts）
+- 框架：dsh-plugin-framework `docs/current-dsh-migration.md`（runtime
+  0.1.1-rc.2 对齐记录）

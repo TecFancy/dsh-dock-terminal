@@ -12,8 +12,11 @@
 # $DSH_HOME/cordis.patch.yml, then each --patch overlay; later layers win per
 # row. There is no `set:` wrapper: the row below is the complete patch form.
 #
-# Example - change the default greeting:
+# Example - pin the shell and raise the per-conversation cap:
 
 - id: dsh-dock-terminal
   config:
-    defaultGreeting: "Hello from production"
+    shell: "/bin/zsh"
+    shellArgs: ["-l"]
+    maxPerSession: 3
+    reconnectGraceMs: 60000

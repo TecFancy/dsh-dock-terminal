@@ -63,26 +63,26 @@ registered through it).
 
 ## Config
 
-| Key               | Default               | Purpose                                    |
-| ----------------- | --------------------- | ------------------------------------------ |
-| `shell`           | `""` (auto $SHELL)    | Explicit shell binary                      |
-| `shellArgs`       | `[]` (`-l` on POSIX)  | Shell startup args (replaces default)      |
-| `maxPerSession`   | `2`                   | Concurrent terminals per conversation      |
-| `reconnectGraceMs`| `30000`               | Grace before a dropped socket kills its pty|
+| Key                | Default              | Purpose                                     |
+| ------------------ | -------------------- | ------------------------------------------- |
+| `shell`            | `""` (auto $SHELL)   | Explicit shell binary                       |
+| `shellArgs`        | `[]` (`-l` on POSIX) | Shell startup args (replaces default)       |
+| `maxPerSession`    | `2`                  | Concurrent terminals per conversation       |
+| `reconnectGraceMs` | `30000`              | Grace before a dropped socket kills its pty |
 
 ## Commands
 
-| Task          | Command                                                      |
-| ------------- | ------------------------------------------------------------ |
-| Install       | `npm install`                                                |
-| Type-check    | `npm run type-check`                                         |
-| Lint          | `npm run lint` / `npm run lint:no-emdash`                    |
-| Format        | `npm run format:check` (fix with `npm run format`)           |
-| Test          | `npm run test` / `npm run test:coverage`                     |
-| Aliases drift | `npm run aliases:check`                                      |
-| Build         | `npm run build` (host tsc + tsdown client bundle)            |
-| Bundle verify | `npm run bundle:check`                                       |
-| Full gate     | `npm run verify` (must stay green)                           |
+| Task          | Command                                            |
+| ------------- | -------------------------------------------------- |
+| Install       | `npm install`                                      |
+| Type-check    | `npm run type-check`                               |
+| Lint          | `npm run lint` / `npm run lint:no-emdash`          |
+| Format        | `npm run format:check` (fix with `npm run format`) |
+| Test          | `npm run test` / `npm run test:coverage`           |
+| Aliases drift | `npm run aliases:check`                            |
+| Build         | `npm run build` (host tsc + tsdown client bundle)  |
+| Bundle verify | `npm run bundle:check`                             |
+| Full gate     | `npm run verify` (must stay green)                 |
 
 ## Requirements
 
