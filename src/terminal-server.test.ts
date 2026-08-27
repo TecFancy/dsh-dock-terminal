@@ -135,7 +135,7 @@ describe("attachTerminal", () => {
     expect(closed[0]?.code).toBe(1011);
   });
 
-  it("replays transcript, writes keyboard input, resizes, and closes", async () => {
+  it("replays transcript, writes keyboard input, resizes, and closes", () => {
     const module = fakeModule();
     const manager = new PtyManager(module, Config.parse({}));
     const { ws, sent, emit } = fakeWs();
@@ -151,9 +151,48 @@ describe("attachTerminal", () => {
     emit("message", JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
     expect(fake.resizes.at(-1)).toEqual({ cols: 120, rows: 40 });
     emit("message", JSON.stringify({ type: "close" }));
-    await new Promise((resolve) => setTimeout(resolve, 5));
     expect(fake.killed).toBe(true);
     expect(sent).toEqual([]);
+  });
+
+  it("an explicit close frame wins over the socket-close grace window", () => {
+    const module = fakeModule();
+    const manager = new PtyManager(module, Config.parse({}));
+    const { ws, emit } = fakeWs();
+    attachTerminal(noCtx, manager, Config.parse({}), ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    const fake = module.spawned[0]!;
+
+    // User close kills synchronously; the socket close event that follows
+    // must NOT re-arm a reconnect-grace timer for the dead key.
+    emit("message", JSON.stringify({ type: "close" }));
+    emit("close");
+    expect(fake.killed).toBe(true);
+    expect(manager.isLive("s1:t1")).toBe(false);
+    expect(manager.isParked("s1:t1")).toBe(false);
+
+    // A reconnect after an explicit close spawns a fresh pty, never the dead one.
+    const second = fakeWs();
+    attachTerminal(noCtx, manager, Config.parse({}), second.ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    expect(module.spawned).toHaveLength(2);
+    expect(second.sent).toEqual([]);
+  });
+
+  it("park is a no-op on a dead key (no zombie park left behind)", () => {
+    const module = fakeModule();
+    const manager = new PtyManager(module, Config.parse({}));
+    const { ws, emit } = fakeWs();
+    attachTerminal(noCtx, manager, Config.parse({}), ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    emit("message", JSON.stringify({ type: "close" }));
+    expect(module.spawned[0]!.killed).toBe(true);
+
+    emit("message", JSON.stringify({ type: "park" }));
+    expect(manager.isParked("s1:t1")).toBe(false);
   });
 
   it("replays the transcript on reopen and parks on a park frame", () => {

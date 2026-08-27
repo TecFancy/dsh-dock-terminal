@@ -103,7 +103,10 @@ export function attachTerminal(
       // Not a control frame: write it as terminal input below.
     }
     if (control !== null && control.type === "close") {
-      manager.scheduleClose(handle.key, 0);
+      // User closed the terminal: kill the pty synchronously (no grace). A
+      // scheduled grace must never override this (the socket close event
+      // fires right after this frame and would otherwise re-arm a 30s timer).
+      manager.close(handle.key);
       return;
     }
     if (control !== null && control.type === "park") {
@@ -127,7 +130,10 @@ export function attachTerminal(
   ws.on("close", () => {
     dataSub.dispose();
     exitSub.dispose();
-    if (!manager.isParked(handle.key)) {
+    // Parked ptys survive indefinitely (session switch). A bare drop starts
+    // the grace countdown only for a still-live handle: an explicit close
+    // frame already removed it, and rescheduling here would revive a dead key.
+    if (!manager.isParked(handle.key) && manager.isLive(handle.key)) {
       manager.scheduleClose(handle.key, config.reconnectGraceMs);
     }
   });

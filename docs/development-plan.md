@@ -206,3 +206,41 @@ production"` 示例 — 与终端 Config 无关，会被误解（改为真实示
   （pty-manager.ts / agent-pty.ts / TerminalView.tsx / index.ts）
 - 框架：dsh-plugin-framework `docs/current-dsh-migration.md`（runtime
   0.1.1-rc.2 对齐记录）
+
+## 8. 验证记录（2026-08-27 实测）
+
+**基线门禁**：`npm run verify` 首跑即红——仓库 pre-existing 的 prettier 红灯
+（README.md 从未过 format），格式化修复后全绿（commit `97d9f05` fix +
+`8dc2795` docs）。
+
+**发现并修复的缺陷**：
+
+| 缺陷                                                                                         | 影响                                                            | 修复（commit）                                                                                                    |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| tsdown 硬编码裸 bundle id `dsh-dock-terminal`，包名却是 scoped `@tecfancy/dsh-dock-terminal` | 部署即死：`loaded without registering`（与 dock-host 旧坑同源） | tsdown ID 从 package.json 派生；verify-bundle.mjs 断言升级为按包名（与 dock-host 一致）（`97d9f05`）              |
+| client 从不发送 `park` 帧（README/头注释声称支持会话切换存活）                               | 切换会话后旧 shell 30s grace 后被杀                             | TerminalView 拆卸时按 store 状态区分 park（切换）/ close（关闭）（`c465636`）                                     |
+| close 帧 `scheduleClose(0)` 被随后的 socket-close 事件 cancel 并替换成 30s grace             | 关闭终端可能延迟 30s 才死                                       | host 侧 `manager.close()` 同步强杀；`scheduleClose`/`park` 增加 `isLive` 守卫（对齐 better-sidebar）（`c465636`） |
+
+**web-test 端到端（已通过）**：`dsh plugin --profile web-test add -w <tgz>`
+（pnpm 9.15.9，node-pty 源码编译成功；profile patch 预置 config）→ 端口 3081
+启动 → playwright 验证：页面与 UI 完整、console 0 errors/0 warnings、
+`/plugins/@tecfancy/dsh-dock-terminal/client.js` 200、dock 行出现「▸ 打开终端」
+按钮、真实会话中 popover 打开、pty 子进程（`/bin/bash -l`，cwd=会话工作区）
+存活、`echo` 命令输入→输出→新提示符全回路正常、× 关闭后 popover 即时消失。
+close/park 修复已由 3 个新单测（close 帧赢过 grace / 死键 park 不复活 /
+关闭后重连重新 spawn）+ verify 全绿覆盖。
+
+**注意（环境）**：
+
+- 本机同时有其它 agent 会话在跑，且共用
+  `PWTEST_DAEMON_SESSION_DIR=/tmp/pw-cli-sessions`（skill 的默认路径）——
+  验证中 popover 状态偶发“被翻转”即两方共用同一浏览器所致，非插件问题。
+  并行测试应各自使用独立会话目录（本次复测已用 `...-doudou`）。
+- 另一会话（「测试dsh实例添加并验证启动」）在此期间**主动调查了本实例**
+  （其消息：“测试实例已经有人在跑了（端口 3081，PID 3838890）！检查已装
+  版本是否最新”并运行了 Bash 命令）——contested 环境下输入→退出码的个别
+  异常现象无法归因，不作为判定依据；实例至今保持运行（PID 3838890，端口
+  3081）。
+
+**下一步**：修复已提交（0.1.x 未发布、未装主实例）。按 §4 v0.2 列表推进
+F1-F5；`web profile` 沙箱模式核实（F9）先行。

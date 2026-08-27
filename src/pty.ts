@@ -105,6 +105,7 @@ export class PtyManager {
   }
 
   park(key: string): void {
+    if (!this.isLive(key)) return;
     this.parked.add(key);
   }
 
@@ -112,9 +113,24 @@ export class PtyManager {
     return this.parked.has(key);
   }
 
+  /** Whether the key still has a live (not exited) pty. */
+  isLive(key: string): boolean {
+    const handle = this.sessions.get(key);
+    return handle !== undefined && !handle.exited;
+  }
+
+  /** Close a handle now, canceling any pending grace timer (user close). */
+  close(key: string): void {
+    this.cancelClose(key);
+    this.parked.delete(key);
+    const handle = this.sessions.get(key);
+    if (handle !== undefined) this.closeNow(handle);
+  }
+
   /** Schedule a pty close after the grace window (0 = now). */
   scheduleClose(key: string, delayMs: number): void {
     this.cancelClose(key);
+    if (!this.isLive(key)) return;
     const timer = setTimeout(
       () => {
         this.pendingCloses.delete(key);

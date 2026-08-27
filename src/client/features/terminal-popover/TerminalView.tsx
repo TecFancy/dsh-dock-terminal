@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { t } from "./i18n.ts";
+import { popoverStore } from "./popover-store.ts";
 import styles from "./terminal.module.css";
 
 /**
@@ -112,6 +113,14 @@ export function TerminalView({ sessionId }: { sessionId?: string | undefined }) 
       if (!mountedRef.current) return;
     };
     return () => {
+      // Distinguish the two unmount reasons at the wire level:
+      // - the popover is closed (store closed): final close frame, kill the pty;
+      // - the session changed while the popover stays open: park frame, the
+      //   host keeps the shell alive until the user switches back.
+      const frame = popoverStore.isOpen() ? "park" : "close";
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: frame }));
+      }
       wsRef.current = null;
       ws.close();
     };
