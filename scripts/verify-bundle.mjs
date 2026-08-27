@@ -15,7 +15,11 @@
  * 7. cordis.patch.yml row name equals package.json name: the cordis loader
  *    imports that name as an ESM specifier rooted at the profile directory,
  *    so a scoped package must not declare a bare name here (this exact bug
- *    killed the plugin tree at boot when the package was published scoped).
+ *    killed the plugin tree at boot when the package was published scoped);
+ * 8. the __ModuleLoader__ load id equals package.json name: the
+ *    client-modules loader keys boot-graph rows by the package name the
+ *    profile installed, so a scoped package must not register a bare short
+ *    id (this exact bug died at boot with "loaded without registering").
  *
  * Heuristic by design: the bundle is a CJS closure, so a full static analysis
  * of its externals is not practical here. The important invariants are the
@@ -28,6 +32,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const bundlePath = resolve(repoRoot, "lib", "client.js");
+const pkg = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
 const failures = [];
 
 function check(condition, message) {
@@ -62,9 +67,10 @@ if (exists(bundlePath)) {
     /return module\.exports;\s*\}\s*\}\);\s*$/.test(tail),
     "bundle must close with the CJS factory footer (tsdown footer misconfigured?)",
   );
+  const expectedId = `id: ${JSON.stringify(pkg.name)}`;
   check(
-    content.includes('id: "dsh-dock-terminal"'),
-    'bundle id mismatch: expected id: "dsh-dock-terminal"',
+    content.includes(expectedId),
+    `bundle id mismatch: expected ${expectedId} (client-modules loads the bundle under the package name; a non-matching id fails at boot with "loaded without registering")`,
   );
   check(
     !content.includes("styles.insert"),
@@ -80,7 +86,6 @@ if (exists(bundlePath)) {
   );
 }
 
-const pkg = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
 const patchSource = readFileSync(resolve(repoRoot, "cordis.patch.yml"), "utf8");
 const patchName = patchSource.match(/^\s*name:\s*["']([^"']+)["']/m)?.[1];
 check(

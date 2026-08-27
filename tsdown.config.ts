@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, resolve } from "node:path";
 import type { UserConfig } from "tsdown";
@@ -24,7 +25,16 @@ import { transform } from "lightningcss";
  */
 const CLIENT_EXTERNALS = ["react", "react/jsx-runtime"];
 
-const ID = "dsh-dock-terminal";
+// The bundle registration id MUST be the package name (package.json `name`),
+// not a decorative short name: the client-modules loader keys boot-graph rows
+// and the `/plugins/<id>/client.js` route by the profile loader entry's
+// `options.name`, which is the full package name the profile installed. A
+// scoped package that registers a bare id here dies at boot with
+// `loaded without registering "<package name>" via __ModuleLoader__.load`.
+// In-box bundles follow the same rule (e.g. `@deepseek-ai/dsh-client-ui-*`).
+const ID: string = JSON.parse(
+  readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"),
+).name;
 
 /**
  * Virtual-id wrapper keeping module CSS away from tsdown's own css pipeline
