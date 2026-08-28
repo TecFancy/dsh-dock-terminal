@@ -69,6 +69,10 @@ scaffold docs live in that repository (architecture, slice guide, decisions).
 - Commit messages: Conventional Commits, types
   feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert (commitlint),
   subject in English, no AI-author trailers.
+- **Stage atomically**: one commit = one change, and only its files. Never
+  `git add -A` / `git add .` - untracked stray files (logs, tmp dumps,
+  screenshots) must not ride along. List the exact paths (`git add src/... README.md`),
+  and double-check `git status` before committing.
 
 ## Skills
 
