@@ -47,6 +47,9 @@ export class PtyManager {
   private readonly sessions = new Map<string, PtyHandle>();
   private readonly parked = new Set<string>();
   private readonly pendingCloses = new Map<string, NodeJS.Timeout>();
+  /** Attached sockets per key, so a stale socket close never re-arms a grace
+   * timer for a key that a newer socket already re-attached to. */
+  private readonly socketCounts = new Map<string, number>();
 
   constructor(
     nodePty: PtyModule,
@@ -121,6 +124,27 @@ export class PtyManager {
     return handle !== undefined && !handle.exited;
   }
 
+  /** Register one attached socket for a key (a re-attach must not count as
+   * a drop in the key's grace bookkeeping). */
+  attach(key: string): void {
+    this.socketCounts.set(key, (this.socketCounts.get(key) ?? 0) + 1);
+  }
+
+  /** Unregister a detached socket. */
+  detach(key: string): void {
+    const count = this.socketCounts.get(key) ?? 1;
+    if (count <= 1) {
+      this.socketCounts.delete(key);
+    } else {
+      this.socketCounts.set(key, count - 1);
+    }
+  }
+
+  /** Whether another socket is still attached to the key. */
+  hasSockets(key: string): boolean {
+    return (this.socketCounts.get(key) ?? 0) > 0;
+  }
+
   /** The resolved shell binary basename, for display (e.g. "bash", "pwsh"). */
   shellName(): string {
     const normalized = this.shell.replace(/\\/g, "/");
@@ -178,6 +202,7 @@ export class PtyManager {
     }
     this.sessions.delete(handle.key);
     this.parked.delete(handle.key);
+    this.socketCounts.delete(handle.key);
   }
 
   disposeAll(): void {
@@ -185,6 +210,7 @@ export class PtyManager {
     for (const timer of this.pendingCloses.values()) clearTimeout(timer);
     this.pendingCloses.clear();
     this.parked.clear();
+    this.socketCounts.clear();
   }
 }
 

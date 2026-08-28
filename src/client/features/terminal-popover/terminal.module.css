@@ -5,14 +5,14 @@
  * like an embedded dark terminal in a light editor. */
 
 /* Mount gate: grid-template-rows 0fr <-> 1fr animates the panel height with
- * its content while opacity fades the chrome. The panel is wider than the
- * composer card (content column), centered in the viewport; the inner slide
- * (translateY) makes open rise from below and collapse sink downward. */
+ * its content while opacity fades the chrome. The panel is as wide as its
+ * dock band (which the app layout keeps inside the visible content column,
+ * so right-side panels never cover it); the inner slide (translateY) makes
+ * open rise from below and collapse sink downward. */
 .wrap {
   margin: 6px auto;
-  width: calc(100vw - 360px);
+  width: 100%;
   max-width: 1200px;
-  min-width: 100%;
   display: grid;
   grid-template-rows: 1fr;
   opacity: 1;
@@ -23,9 +23,8 @@
 
 .wrapCollapsed {
   margin: 6px auto;
-  width: calc(100vw - 360px);
+  width: 100%;
   max-width: 1200px;
-  min-width: 100%;
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;

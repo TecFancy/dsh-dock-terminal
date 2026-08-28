@@ -57,11 +57,12 @@ describe("Config schema", () => {
     const cfg = Config.parse({});
     expect(cfg.shell).toBe("");
     expect(cfg.shellArgs).toEqual([]);
-    expect(cfg.maxPerSession).toBe(0);
+    expect(cfg.maxPerSession).toBe(3);
     expect(cfg.reconnectGraceMs).toBe(30000);
 
     expect(() => Config.parse({ maxPerSession: 99 })).toThrow();
-    expect(Config.parse({ maxPerSession: 3 }).maxPerSession).toBe(3);
+    expect(Config.parse({ maxPerSession: 0 }).maxPerSession).toBe(0);
+    expect(Config.parse({ maxPerSession: 5 }).maxPerSession).toBe(5);
   });
 
   it("accepts an absent config block like the cordis loader passes", () => {
@@ -69,7 +70,7 @@ describe("Config schema", () => {
     // Config schema even when the patch inserts no `config:` key; a bare
     // z.object() would reject undefined ("Required") on newer cordis builds.
     const cfg = Config.parse(undefined);
-    expect(cfg.maxPerSession).toBe(0);
+    expect(cfg.maxPerSession).toBe(3);
     expect(cfg.reconnectGraceMs).toBe(30000);
   });
 });
@@ -263,7 +264,7 @@ describe("PtyManager", () => {
 
   it("caps at 0 meaning unlimited: any number of tabs opens", () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({}));
+    const manager = new PtyManager(module as never, Config.parse({ maxPerSession: 0 }));
     for (let index = 0; index < 5; index += 1) {
       expect(() => manager.open("s1", `t${index}`, "/tmp", 80, 24)).not.toThrow();
     }

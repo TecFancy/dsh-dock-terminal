@@ -79,6 +79,7 @@ export function attachTerminal(
     ws.close(1011, error instanceof Error ? error.message : String(error));
     return;
   }
+  manager.attach(handle.key);
 
   // First frame: terminal metadata (shell name, cwd, per-session cap) so the
   // client can render the header and enforce the tab limit. Then the bounded
@@ -141,10 +142,17 @@ export function attachTerminal(
   ws.on("close", () => {
     dataSub.dispose();
     exitSub.dispose();
+    manager.detach(handle.key);
     // Parked ptys survive indefinitely (session switch). A bare drop starts
-    // the grace countdown only for a still-live handle: an explicit close
-    // frame already removed it, and rescheduling here would revive a dead key.
-    if (!manager.isParked(handle.key) && manager.isLive(handle.key)) {
+    // the grace countdown only for a still-live handle with no other socket
+    // attached: an explicit close frame already removed it (scheduling here
+    // would revive a dead key), and a newer socket that already re-attached
+    // must not have its pty reaped by this stale socket's close event.
+    if (
+      !manager.isParked(handle.key) &&
+      manager.isLive(handle.key) &&
+      !manager.hasSockets(handle.key)
+    ) {
       manager.scheduleClose(handle.key, config.reconnectGraceMs);
     }
   });

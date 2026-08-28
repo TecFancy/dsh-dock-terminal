@@ -117,3 +117,36 @@ describe("PtyManager.shellName", () => {
     expect(managerWith("/bin/bash", []).shellName()).toBe("bash");
   });
 });
+
+describe("PtyManager socket accounting", () => {
+  const noopPty = () => ({
+    onData: () => ({ dispose: () => undefined }),
+    onExit: () => ({ dispose: () => undefined }),
+    write: () => undefined,
+    resize: () => undefined,
+    kill: () => undefined,
+  });
+  const module = { spawn: noopPty };
+  const cfg = { shell: "", shellArgs: [], maxPerSession: 3, reconnectGraceMs: 30000 };
+
+  function manager() {
+    return new PtyManager(module, cfg);
+  }
+
+  it("counts attach/detach per key and clears counts on close", () => {
+    const mgr = manager();
+    mgr.open("s1", "t1", "/tmp", 80, 24);
+    mgr.attach("s1:t1");
+    mgr.attach("s1:t1");
+    expect(mgr.hasSockets("s1:t1")).toBe(true);
+    mgr.detach("s1:t1");
+    expect(mgr.hasSockets("s1:t1")).toBe(true);
+    mgr.detach("s1:t1");
+    expect(mgr.hasSockets("s1:t1")).toBe(false);
+
+    // An explicit close clears the accounting so a late detach cannot revive it.
+    mgr.attach("s1:t1");
+    mgr.close("s1:t1");
+    expect(mgr.hasSockets("s1:t1")).toBe(false);
+  });
+});

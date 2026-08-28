@@ -146,7 +146,7 @@ describe("attachTerminal", () => {
     const fake = module.spawned[0]!;
 
     // The first frame is the meta frame (shell/cwd/cap), then raw output.
-    expect(JSON.parse(sent[0]!)).toMatchObject({ type: "meta", maxPerSession: 0 });
+    expect(JSON.parse(sent[0]!)).toMatchObject({ type: "meta", maxPerSession: 3 });
     expect(sent).toHaveLength(1);
 
     // Keyboard input is written verbatim; control frames are not.
@@ -198,6 +198,38 @@ describe("attachTerminal", () => {
 
     emit("message", JSON.stringify({ type: "park" }));
     expect(manager.isParked("s1:t1")).toBe(false);
+  });
+
+  it("a stale socket close never schedules grace while a newer socket is attached", async () => {
+    const module = fakeModule();
+    const config = Config.parse({ reconnectGraceMs: 40 });
+    const manager = new PtyManager(module, config);
+    const first = fakeWs();
+    attachTerminal(noCtx, manager, config, first.ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    const fake = module.spawned[0]!;
+
+    // The popover re-attaches (new socket) before the old socket's close
+    // event lands: the old close must not start the reconnect grace timer
+    // for a key that is still being served by the newer socket.
+    const second = fakeWs();
+    attachTerminal(noCtx, manager, config, second.ws, {
+      url: "/dock-terminal/ws?sessionId=s1&tab=t1",
+    });
+    expect(manager.hasSockets("s1:t1")).toBe(true);
+
+    first.emit("close");
+    expect(fake.killed).toBe(false);
+    expect(manager.isLive("s1:t1")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(fake.killed).toBe(false);
+
+    // The last socket dropping starts the grace countdown, which then closes.
+    second.emit("close");
+    expect(manager.hasSockets("s1:t1")).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(fake.killed).toBe(true);
   });
 
   it("replays the transcript on reopen and parks on a park frame", () => {

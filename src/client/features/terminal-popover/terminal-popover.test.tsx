@@ -371,6 +371,43 @@ describe("TerminalPopover", () => {
     store.close();
   });
 
+  it("closing the middle of three tabs leaves the other panes untouched", () => {
+    const store = createTerminalStore();
+    store.open();
+    const first = store.tabs()[0]!.id;
+    const second = store.addTab()!;
+    const third = store.addTab()!;
+    store.activate(second);
+    const { container, rerender } = render(<TerminalPopover sessionId="s1" store={store} />);
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
+
+    MockWebSocket.frames = [];
+    act(() => {
+      for (const socket of MockWebSocket.instances) socket.fireOpen();
+    });
+    MockWebSocket.frames = [];
+
+    const closeSpans = (): HTMLElement[] =>
+      [...container.querySelectorAll<HTMLElement>('[role="button"]')].filter(
+        (b) => b.getAttribute("aria-label") === "Close terminal",
+      );
+    act(() => {
+      closeSpans()[1]!.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
+    });
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
+
+    // Only the closed tab's close frame is sent: survivors neither close nor
+    // park (their sockets keep serving the same ptys).
+    expect(store.tabs().map((tab) => tab.id)).toEqual([first, third]);
+    expect(store.hasTab(second)).toBe(false);
+    expect(store.isOpen()).toBe(true);
+    const closeFrames = MockWebSocket.frames.filter((f) => f.includes('"type":"close"'));
+    const parkFrames = MockWebSocket.frames.filter((f) => f.includes('"type":"park"'));
+    expect(closeFrames).toHaveLength(1);
+    expect(parkFrames).toHaveLength(0);
+    store.close();
+  });
+
   it("adds and closes tabs through the tab bar and disables + at the cap", () => {
     const store = createTerminalStore();
     store.open();

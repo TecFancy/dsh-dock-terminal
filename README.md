@@ -8,7 +8,8 @@ terminal panel into `conversation.composer.dock` - the band under the
 composer card. Clicking the dock button expands the popover; clicking again
 (or the close button) collapses it while the shells keep running (the tab ×
 closes a shell for real). The popover hosts **one terminal per tab**
-(capped per conversation only when `maxPerSession` is configured positive),
+(capped per conversation; the default cap is 3 tabs, configurable through
+`maxPerSession`, 0 for unlimited),
 with a tab bar to open, switch and close shells.
 
 The plugin is deliberately **atomic**: it does terminals only. The shell runs
@@ -52,9 +53,11 @@ Client opens `wss://<host>/dock-terminal/ws?sessionId=<id>&tab=<tabId>`:
   transcript ring before live data.
 
 One pty per `${sessionId}:${tabId}` key survives page refreshes (grace
-window `reconnectGraceMs`, default 30 s) and session switches (parked), is
-capped per conversation only when `maxPerSession` is configured positive,
-and is closed immediately when its conversation is disposed.
+window `reconnectGraceMs`, default 30 s) and session switches (parked); the
+default `maxPerSession` of 3 caps the concurrent terminals per conversation
+(0 disables the cap), and a conversation is closed immediately when it is
+disposed. The panel is sized by its dock band, so side panels (e.g. a right
+sidebar) never cover terminal output.
 
 ## Install
 
@@ -110,8 +113,9 @@ The popover shell follows the dsh theme tokens (`--dsw-alias-bg-layer-1`,
 `--dsw-alias-label-primary`, `--dsw-alias-border-l1`, `--dsw-shadow-lv2`), so
 it matches the composer card in both light and dark themes. The xterm
 surface itself stays Catppuccin Mocha, like a dark terminal embedded in a
-light editor. The panel is **wider than the composer card** (content column,
-max 1200 px, centered) so terminal output has room. Expand rises from below
+light editor. The panel is as wide as its dock band (the app layout keeps it
+inside the visible content column, max 1200 px), so terminal output has room
+and right-side panels never cover it. Expand rises from below
 and collapse sinks downward (grid rows + opacity + a vertical slide over
 200 ms, honoring `prefers-reduced-motion`). The dock button carries an
 inline SVG terminal glyph and the label `Terminal`/`终端`; rendering the SVG
@@ -140,12 +144,29 @@ working for the UI popover and simply skips the tool set.
 
 ## Config
 
-| Key                | Default                                                           | Purpose                                                   |
-| ------------------ | ----------------------------------------------------------------- | --------------------------------------------------------- |
-| `shell`            | `""` (auto: $SHELL on POSIX, PowerShell 7 > 5.1 > cmd on Windows) | Explicit shell binary                                     |
-| `shellArgs`        | `[]` (`-l` POSIX, `-NoLogo` for PowerShell)                       | Shell startup args (replaces default)                     |
-| `maxPerSession`    | `0` (unlimited)                                                   | Positive value caps concurrent terminals per conversation |
-| `reconnectGraceMs` | `30000`                                                           | Grace before a dropped socket kills its pty               |
+| Key                | Default                                                           | Purpose                                                |
+| ------------------ | ----------------------------------------------------------------- | ------------------------------------------------------ |
+| `shell`            | `""` (auto: $SHELL on POSIX, PowerShell 7 > 5.1 > cmd on Windows) | Explicit shell binary                                  |
+| `shellArgs`        | `[]` (`-l` POSIX, `-NoLogo` for PowerShell)                       | Shell startup args (replaces default)                  |
+| `maxPerSession`    | `3` (a 4th tab shows the cap banner)                              | Concurrent terminals per conversation; `0` = unlimited |
+| `reconnectGraceMs` | `30000`                                                           | Grace before a dropped socket kills its pty            |
+
+## Release flow (test from the repo before publishing)
+
+Publishing is **tag-triggered** (`.github/workflows/publish.yml` pushes `v*`
+tags to npm after the CI gate). Nothing on `main` is published by a push, so
+the safe order is:
+
+1. `git push origin main` - the code, not a release;
+2. install the branch into a test profile and verify:
+   `dsh plugin --profile web-test add -w "github:TecFancy/dsh-dock-terminal#main"`,
+   restart the test instance and run the end-to-end checks;
+3. only once the checks pass, tag and publish:
+   `git tag v0.5.0 && git push origin v0.5.0` (the tag must equal `package.json`'s version);
+4. after the publish lands, point the test profile back at the registry version.
+
+This keeps a broken build from ever reaching npm: a npm version exists only
+after the tag, so `latest` always refers to a verified release.
 
 ## Commands
 
