@@ -146,7 +146,7 @@ describe("attachTerminal", () => {
     const fake = module.spawned[0]!;
 
     // The first frame is the meta frame (shell/cwd/cap), then raw output.
-    expect(JSON.parse(sent[0]!)).toMatchObject({ type: "meta", maxPerSession: 2 });
+    expect(JSON.parse(sent[0]!)).toMatchObject({ type: "meta", maxPerSession: 0 });
     expect(sent).toHaveLength(1);
 
     // Keyboard input is written verbatim; control frames are not.

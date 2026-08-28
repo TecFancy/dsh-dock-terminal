@@ -1,6 +1,7 @@
 import { TerminalPopover } from "./features/terminal-popover/TerminalPopover.tsx";
 import { LOCALES, LOCALE_NS, syncLocale } from "./features/terminal-popover/i18n.ts";
 import { terminalStore } from "./features/terminal-popover/terminal-store.ts";
+import { TerminalIcon } from "./features/terminal-popover/TerminalIcon.tsx";
 import {
   COMPOSER_DOCK_SLOT,
   POPOVER_SLOT_ID,
@@ -37,7 +38,7 @@ export function apply(ctx: TerminalClientContext): void {
         id: TERMINAL_BUTTON_ID,
         order: 10,
         label: () => bind("open"),
-        icon: "\u25B8",
+        icon: <TerminalIcon />,
         primary: true,
         run: () => terminalStore.toggle(),
       }),

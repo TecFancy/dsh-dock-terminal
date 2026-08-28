@@ -80,7 +80,7 @@ export class PtyManager {
     const liveCount = [...this.sessions.values()].filter(
       (h) => h.sessionId === sessionId && !h.exited,
     ).length;
-    if (liveCount >= this.config.maxPerSession) {
+    if (this.config.maxPerSession > 0 && liveCount >= this.config.maxPerSession) {
       throw new Error(`terminal limit reached (${this.config.maxPerSession}) for this session`);
     }
 

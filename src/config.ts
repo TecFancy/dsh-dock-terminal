@@ -16,8 +16,12 @@ const ConfigSchema = z.object({
   shell: z.string().default(""),
   /** Explicit shell startup args; empty uses the platform default (-l posix). */
   shellArgs: z.array(z.string()).default([]),
-  /** Concurrent pty processes per conversation. */
-  maxPerSession: z.number().int().min(1).max(16).default(2),
+  /**
+   * Concurrent pty processes per conversation. 0 means no cap (the default,
+   * matching an unlimited "+" tab bar); deployments that want a resource
+   * guard set a positive value.
+   */
+  maxPerSession: z.number().int().min(0).max(16).default(0),
   /** Grace window a bare socket drop waits before its pty dies, in ms. */
   reconnectGraceMs: z.number().int().min(0).default(30000),
 });

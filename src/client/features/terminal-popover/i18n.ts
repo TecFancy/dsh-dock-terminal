@@ -13,7 +13,7 @@ export const LOCALES: {
 } = {
   zh: {
     title: "终端",
-    open: "打开终端",
+    open: "终端",
     close: "收起",
     newTab: "新建终端",
     closeTab: "关闭终端",
@@ -25,7 +25,7 @@ export const LOCALES: {
   },
   en: {
     title: "Terminal",
-    open: "Open terminal",
+    open: "Terminal",
     close: "Collapse",
     newTab: "New terminal",
     closeTab: "Close terminal",

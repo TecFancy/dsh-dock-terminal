@@ -290,7 +290,7 @@ describe("TerminalView", () => {
 describe("TerminalPopover", () => {
   afterEach(cleanup);
 
-  it("renders nothing when the store is closed and the tabbed panel when open", () => {
+  it("renders nothing when the store is closed and the tabbed panel when open, animating the collapse", async () => {
     const store = createTerminalStore();
     const { container, rerender } = render(<TerminalPopover sessionId="s1" store={store} />);
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
@@ -298,15 +298,23 @@ describe("TerminalPopover", () => {
       store.open();
     });
     rerender(<TerminalPopover sessionId="s1" store={store} />);
+    await new Promise((resolve) => setTimeout(resolve, 5));
     expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
 
-    // The header close button collapses the panel again.
+    // The header close button collapses the panel; the wrapper stays for
+    // the transition and then unmounts.
     act(() => {
       const closeButton = container.querySelector(
         '[data-testid="terminal-popover"] button[aria-label="Collapse"]',
       );
       closeButton?.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
     });
+    expect(container.querySelector('[data-testid="terminal-popover-wrap"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="terminal-popover-wrap"]')?.className).toContain(
+      "wrapCollapsed",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    rerender(<TerminalPopover sessionId="s1" store={store} />);
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
   });
 

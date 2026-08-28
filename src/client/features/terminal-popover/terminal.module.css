@@ -1,14 +1,44 @@
 /* Terminal popover (conversation.composer.dock): a compact panel under the
- * composer card, hosting the xterm view and its tab bar. */
+ * composer card, hosting the xterm view and its tab bar. The shell follows
+ * the dsh theme tokens (--dsw-alias-*), matching the composer card in both
+ * light and dark themes; the xterm surface itself stays Catppuccin Mocha,
+ * like an embedded dark terminal in a light editor. */
+
+/* Mount gate: grid-template-rows 0fr <-> 1fr animates the panel height with
+ * its content while opacity fades the chrome. */
+.wrap {
+  margin: 6px 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 200ms ease,
+    opacity 200ms ease;
+}
+
+.wrapCollapsed {
+  margin: 6px 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 200ms ease,
+    opacity 200ms ease;
+}
+
+.wrapInner {
+  overflow: hidden;
+  min-height: 0;
+}
+
 .popover {
   width: 100%;
-  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.1));
   border-radius: 10px;
-  background: #16171d;
-  color: #e6e6e6;
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  color: var(--dsw-alias-label-primary, #0f1115);
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  margin: 6px 0;
+  box-shadow: var(--dsw-shadow-lv2, 0 8px 24px rgba(0, 0, 0, 0.25));
 }
 
 .header {
@@ -207,7 +237,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popover {
+  .wrap,
+  .wrapCollapsed {
     transition: none;
   }
 }

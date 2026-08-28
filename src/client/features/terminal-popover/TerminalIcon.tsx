@@ -1,0 +1,23 @@
+/**
+ * Inline terminal glyph for the dock button: a prompt chevron over an
+ * underscore, stroke-based so it inherits the button color and matches the
+ * dsh chrome icons. Rendered raw (no JSX sugar), sized like a text glyph.
+ */
+export function TerminalIcon(): JSX.Element {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+  );
+}

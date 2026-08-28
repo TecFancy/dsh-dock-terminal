@@ -33,7 +33,12 @@ export interface DockButton {
   id: string;
   order?: number;
   label: string | (() => string);
-  icon?: string;
+  /**
+   * Optional leading glyph. A string renders as a text prefix; an element
+   * (inline SVG) renders as a standalone glyph inheriting the button color
+   * (dock-host 0.2.1+; older hosts render it as a text prefix).
+   */
+  icon?: string | import("react").ReactElement;
   enabled?: boolean | ((ctx: unknown) => boolean);
   primary?: boolean;
   run(ctx: unknown): void | Promise<void>;

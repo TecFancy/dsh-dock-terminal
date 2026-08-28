@@ -127,7 +127,7 @@ describe("apply (client root)", () => {
     expect(registrations[0]?.view).toBeTypeOf("function");
   });
 
-  it("renders nothing while closed and mounts the popover on toggle", () => {
+  it("renders nothing while closed and mounts the popover on toggle, unmounting after the collapse", async () => {
     const { ctx, registrations, buttons } = fakeContext();
     apply(ctx);
     const view = registrations[0]!.view;
@@ -138,11 +138,15 @@ describe("apply (client root)", () => {
     act(() => {
       void buttons[0]!.run({});
     });
+    await new Promise((resolve) => setTimeout(resolve, 5));
     expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
 
     act(() => {
       void buttons[0]!.run({});
     });
+    // The collapse transition keeps the wrapper mounted for one beat.
+    expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 260));
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
   });
 });

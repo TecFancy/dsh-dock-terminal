@@ -7,7 +7,8 @@ static Cordis plugin. It publishes a `terminal:open` button into the
 terminal panel into `conversation.composer.dock` - the band under the
 composer card. Clicking the dock button expands the popover; clicking again
 (or the close button) collapses it. The popover hosts **one terminal per tab**
-(bounded by `maxPerSession`), with a tab bar to open, switch and close shells.
+(capped per conversation only when `maxPerSession` is configured positive),
+with a tab bar to open, switch and close shells.
 
 The plugin is deliberately **atomic**: it does terminals only. The shell runs
 on the dsh host through node-pty; the browser renders it with xterm.js over a
@@ -50,8 +51,8 @@ Client opens `wss://<host>/dock-terminal/ws?sessionId=<id>&tab=<tabId>`:
 
 One pty per `${sessionId}:${tabId}` key survives page refreshes (grace
 window `reconnectGraceMs`, default 30 s) and session switches (parked), is
-capped per conversation by `maxPerSession`, and is closed immediately when
-its conversation is disposed.
+capped per conversation only when `maxPerSession` is configured positive,
+and is closed immediately when its conversation is disposed.
 
 ## Install
 
@@ -101,9 +102,20 @@ config:
 No `shellArgs` needed for explicit shells: the plugin only adds `-NoLogo`
 when the resolved shell is PowerShell, and `-l` on POSIX.
 
+### Theme, icon and motion
+
+The popover shell follows the dsh theme tokens (`--dsw-alias-bg-layer-1`,
+`--dsw-alias-label-primary`, `--dsw-alias-border-l1`, `--dsw-shadow-lv2`), so
+it matches the composer card in both light and dark themes. The xterm
+surface itself stays Catppuccin Mocha, like a dark terminal embedded in a
+light editor. Expand and collapse animate (height fade over 200 ms, honoring
+`prefers-reduced-motion`). The dock button carries an inline SVG terminal
+glyph and the label `Terminal`/`终端`; rendering the SVG glyph requires
+**dsh-dock-host >= 0.2.1** (older hosts show it as a text prefix).
+
 Requires `@deepseek-ai/cordis` `^4.0.1` as a peer dependency and the
-`dsh-dock-host` client service `dockButtons` (the popover button is
-registered through it).
+`dsh-dock-host` (>= 0.2.1) client service `dockButtons` (the popover button
+is registered through it).
 
 ## Model terminal tools (optional)
 
@@ -118,12 +130,12 @@ working for the UI popover and simply skips the tool set.
 
 ## Config
 
-| Key                | Default                                                           | Purpose                                     |
-| ------------------ | ----------------------------------------------------------------- | ------------------------------------------- |
-| `shell`            | `""` (auto: $SHELL on POSIX, PowerShell 7 > 5.1 > cmd on Windows) | Explicit shell binary                       |
-| `shellArgs`        | `[]` (`-l` POSIX, `-NoLogo` for PowerShell)                       | Shell startup args (replaces default)       |
-| `maxPerSession`    | `2`                                                               | Concurrent terminals per conversation       |
-| `reconnectGraceMs` | `30000`                                                           | Grace before a dropped socket kills its pty |
+| Key                | Default                                                           | Purpose                                                   |
+| ------------------ | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| `shell`            | `""` (auto: $SHELL on POSIX, PowerShell 7 > 5.1 > cmd on Windows) | Explicit shell binary                                     |
+| `shellArgs`        | `[]` (`-l` POSIX, `-NoLogo` for PowerShell)                       | Shell startup args (replaces default)                     |
+| `maxPerSession`    | `0` (unlimited)                                                   | Positive value caps concurrent terminals per conversation |
+| `reconnectGraceMs` | `30000`                                                           | Grace before a dropped socket kills its pty               |
 
 ## Commands
 
