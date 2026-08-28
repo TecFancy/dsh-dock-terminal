@@ -35,12 +35,11 @@
       "default": "./lib/client.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./skills/*": "./skills/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
-    "skills",
+    ".agents/skills",
     "cordis.patch.yml",
     "deploy"
   ],
@@ -68,10 +67,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "aliases:check": "node scripts/check-aliases.mjs",
-    "skills:sync": "node scripts/sync-skills.mjs",
-    "skills:check": "node scripts/sync-skills.mjs --check",
     "bundle:check": "node scripts/verify-bundle.mjs",
-    "verify": "npm run format:check && npm run lint && npm run lint:no-emdash && npm run aliases:check && npm run type-check && npm run test:coverage && npm run build && npm run bundle:check && npm run skills:check",
+    "verify": "npm run format:check && npm run lint && npm run lint:no-emdash && npm run aliases:check && npm run type-check && npm run test:coverage && npm run build && npm run bundle:check",
     "prepack": "npm run build && npm run bundle:check",
     "prepare": "node -e \"try { require.resolve('husky') } catch { process.exit(0) } require('node:child_process').execSync('husky', { stdio: 'inherit' })\""
   },

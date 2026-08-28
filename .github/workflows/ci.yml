@@ -48,6 +48,3 @@ jobs:
 
       - name: Bundle contract
         run: npm run bundle:check
-
-      - name: Skills sync
-        run: npm run skills:check
