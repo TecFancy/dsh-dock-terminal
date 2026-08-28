@@ -5,9 +5,14 @@
  * like an embedded dark terminal in a light editor. */
 
 /* Mount gate: grid-template-rows 0fr <-> 1fr animates the panel height with
- * its content while opacity fades the chrome. */
+ * its content while opacity fades the chrome. The panel is wider than the
+ * composer card (content column), centered in the viewport; the inner slide
+ * (translateY) makes open rise from below and collapse sink downward. */
 .wrap {
-  margin: 6px 0;
+  margin: 6px auto;
+  width: calc(100vw - 360px);
+  max-width: 1200px;
+  min-width: 100%;
   display: grid;
   grid-template-rows: 1fr;
   opacity: 1;
@@ -17,7 +22,10 @@
 }
 
 .wrapCollapsed {
-  margin: 6px 0;
+  margin: 6px auto;
+  width: calc(100vw - 360px);
+  max-width: 1200px;
+  min-width: 100%;
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
@@ -29,6 +37,12 @@
 .wrapInner {
   overflow: hidden;
   min-height: 0;
+  transform: translateY(0);
+  transition: transform 200ms ease;
+}
+
+.wrapCollapsed .wrapInner {
+  transform: translateY(48px);
 }
 
 .popover {
@@ -238,7 +252,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wrap,
-  .wrapCollapsed {
+  .wrapCollapsed,
+  .wrapInner {
     transition: none;
   }
 }

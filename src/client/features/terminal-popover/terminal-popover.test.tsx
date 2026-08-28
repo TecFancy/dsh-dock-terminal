@@ -64,7 +64,7 @@ vi.mock("@xterm/addon-fit", () => ({
 }));
 
 describe("terminal store", () => {
-  it("opens with one tab, toggles, and closes the whole popover on the last tab close", () => {
+  it("opens with one tab, collapses without losing it, and closes on the last tab close", () => {
     const store = createTerminalStore();
     const seen: boolean[] = [];
     const unsubscribe = store.subscribe(() => seen.push(store.isOpen()));
@@ -79,17 +79,21 @@ describe("terminal store", () => {
 
     store.toggle();
     expect(store.isOpen()).toBe(false);
-    expect(store.tabs()).toHaveLength(0);
+    // Collapse keeps the tabs alive (the ptys keep running, parked).
+    expect(store.tabs()).toHaveLength(1);
+    expect(store.tabs()[0]!.id).toBe(first);
+    expect(store.activeId()).toBe(first);
     store.toggle();
     expect(store.isOpen()).toBe(true);
-    // Reopening after a full collapse starts a fresh tab.
+    // Reopening resumes the same tab, not a fresh one.
     expect(store.tabs()).toHaveLength(1);
-    const reopened = store.tabs()[0]!.id;
+    expect(store.tabs()[0]!.id).toBe(first);
 
-    // Closing the last tab collapses the popover.
-    store.closeTab(reopened);
+    // Closing the last tab collapses the popover and tears the tab down.
+    store.closeTab(first);
     expect(store.isOpen()).toBe(false);
     expect(store.tabs()).toHaveLength(0);
+    expect(store.activeId()).toBeNull();
     unsubscribe();
   });
 
@@ -284,6 +288,35 @@ describe("TerminalView", () => {
     expect(closed).toHaveLength(1);
     expect(store.hasTab(added)).toBe(true);
     store.close();
+  });
+
+  it("parks the pty when the popover collapses instead of killing it", () => {
+    MockWebSocket.instances = [];
+    MockWebSocket.frames = [];
+    const store = createTerminalStore();
+    store.open();
+    const first = store.tabs()[0]!.id;
+    const view = render(<TerminalView sessionId="s1" tabId={first} store={store} />);
+    act(() => {
+      MockWebSocket.instances[0]!.fireOpen();
+    });
+    MockWebSocket.frames = [];
+
+    // Collapse: the tab stays in the store, so the teardown frame is park
+    // (the pty keeps running) and reopening resumes the same shell.
+    act(() => {
+      store.close();
+    });
+    expect(store.hasTab(first)).toBe(true);
+    act(() => {
+      view.unmount();
+    });
+
+    const parked = MockWebSocket.frames.filter((frame) => frame.includes('"type":"park"'));
+    const closed = MockWebSocket.frames.filter((frame) => frame.includes('"type":"close"'));
+    expect(parked).toHaveLength(1);
+    expect(closed).toHaveLength(0);
+    store.closeTab(first);
   });
 });
 

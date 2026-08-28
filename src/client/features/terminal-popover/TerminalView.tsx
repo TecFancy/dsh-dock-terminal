@@ -27,11 +27,14 @@ export interface TerminalViewProps {
  * One xterm view bound to the host pty bridge.
  *
  * The WebSocket uses a relative URL (same origin as the page, resolved by the
- * browser); the host keeps the pty alive across a session switch (the view
- * sends a park frame) and across page refreshes (grace window). The wire
- * frame on teardown is decided from the store: a tab that still exists and
- * the popover that is still open mean a switch (park); anything else means a
- * close (kill).
+ * browser); the host keeps the pty alive across a session switch AND a
+ * popover collapse (the view sends a park frame: collapsing the panel keeps
+ * running work alive, it only hides the pane) and across page refreshes
+ * (grace window). The wire frame on teardown is decided from the store: a
+ * tab that still exists means park (collapse or switch); a tab removed from
+ * the store means a close (kill, the tab × button). Exception: the store
+ * subscription effect below sends the close frame directly when a tab is
+ * removed, so this cleanup only ever needs the park branch for collapse.
  */
 export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -204,9 +207,11 @@ export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewPr
     return () => {
       // The store-subscription effect above already sent the final close
       // frame when this tab was removed; only close the socket then. For a
-      // session/tab switch (park frame) give the frame a beat to leave the
-      // browser queue before closing: a synchronous close() may race the
-      // outbound frame and the host would fall back to the grace window.
+      // collapse (popover ×: the tab stays in the store) or a session/tab
+      // switch the frame is "park" so the pty keeps running; give the frame
+      // a beat to leave the browser queue before closing: a synchronous
+      // close() may race the outbound frame and the host would fall back to
+      // the grace window.
       if (ws.readyState !== WebSocket.OPEN) {
         wsRef.current = null;
         ws.close();
@@ -217,8 +222,10 @@ export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewPr
         ws.close();
         return;
       }
-      const stillOpen = viewStore.isOpen() && viewStore.hasTab(tabId);
-      ws.send(JSON.stringify({ type: stillOpen ? "park" : "close" }));
+      // A tab removed from the store means real teardown (tab x); anything
+      // else (collapse, session switch) parks the pty so work keeps running.
+      const stillLive = viewStore.hasTab(tabId);
+      ws.send(JSON.stringify({ type: stillLive ? "park" : "close" }));
       wsRef.current = null;
       setTimeout(() => ws.close(), 50);
     };

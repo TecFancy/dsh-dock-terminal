@@ -59,9 +59,10 @@ export function createTerminalStore(): TerminalStore {
     },
     close() {
       if (opened) {
+        // Collapse only: tabs stay alive so the ptys keep running (the view
+        // parks them) and reopening resumes the same tabs. Real teardown
+        // happens per tab via closeTab (or when the session is disposed).
         opened = false;
-        tabs = [];
-        activeId = null;
         notify();
       }
     },
@@ -94,12 +95,14 @@ export function createTerminalStore(): TerminalStore {
       if (!tabs.some((tab) => tab.id === id)) return;
       const remaining = tabs.filter((tab) => tab.id !== id);
       if (remaining.length === 0) {
-        api.close();
+        tabs = [];
+        activeId = null;
+        opened = false;
       } else {
         tabs = remaining;
         if (activeId === id) activeId = remaining[remaining.length - 1]!.id;
-        notify();
       }
+      notify();
     },
     setMaxPerSession(count: number) {
       if (count > 0 && count !== maxPerSession) {

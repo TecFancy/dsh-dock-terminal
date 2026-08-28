@@ -6,7 +6,8 @@ static Cordis plugin. It publishes a `terminal:open` button into the
 [dsh-dock-host](../../dsh-dock-host) `dockButtons` registry and mounts the
 terminal panel into `conversation.composer.dock` - the band under the
 composer card. Clicking the dock button expands the popover; clicking again
-(or the close button) collapses it. The popover hosts **one terminal per tab**
+(or the close button) collapses it while the shells keep running (the tab ×
+closes a shell for real). The popover hosts **one terminal per tab**
 (capped per conversation only when `maxPerSession` is configured positive),
 with a tab bar to open, switch and close shells.
 
@@ -43,8 +44,9 @@ Client opens `wss://<host>/dock-terminal/ws?sessionId=<id>&tab=<tabId>`:
 - keyboard input: any text message that is not valid JSON is written to the
   pty stdin;
 - control frames: `{"type":"resize","cols":n,"rows":n}` resizes the shell,
-  `{"type":"park"}` marks the terminal across a session switch or tab switch
-  (keeps the process alive), `{"type":"close"}` closes it;
+  `{"type":"park"}` marks the terminal across a session switch, tab switch
+  or popover collapse (keeps the process alive), `{"type":"close"}` closes
+  it;
 - server -> client: first a `{"type":"meta","shell":...,"cwd":...,"maxPerSession":n}`
   frame, then raw pty output. A reconnecting socket replays a bounded
   transcript ring before live data.
@@ -108,10 +110,18 @@ The popover shell follows the dsh theme tokens (`--dsw-alias-bg-layer-1`,
 `--dsw-alias-label-primary`, `--dsw-alias-border-l1`, `--dsw-shadow-lv2`), so
 it matches the composer card in both light and dark themes. The xterm
 surface itself stays Catppuccin Mocha, like a dark terminal embedded in a
-light editor. Expand and collapse animate (height fade over 200 ms, honoring
-`prefers-reduced-motion`). The dock button carries an inline SVG terminal
-glyph and the label `Terminal`/`终端`; rendering the SVG glyph requires
-**dsh-dock-host >= 0.2.1** (older hosts show it as a text prefix).
+light editor. The panel is **wider than the composer card** (content column,
+max 1200 px, centered) so terminal output has room. Expand rises from below
+and collapse sinks downward (grid rows + opacity + a vertical slide over
+200 ms, honoring `prefers-reduced-motion`). The dock button carries an
+inline SVG terminal glyph and the label `Terminal`/`终端`; rendering the SVG
+glyph requires **dsh-dock-host >= 0.2.1** (older hosts show it as a text
+prefix).
+
+Collapse keeps the ptys running: the popover × only hides the panel (each
+tab sends a `park` frame), so a build or long command keeps executing and
+reopening resumes the same tab with its scrollback. The tab × is the real
+teardown (kills that pty).
 
 Requires `@deepseek-ai/cordis` `^4.0.1` as a peer dependency and the
 `dsh-dock-host` (>= 0.2.1) client service `dockButtons` (the popover button
