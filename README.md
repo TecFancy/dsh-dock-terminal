@@ -74,6 +74,30 @@ dsh plugin --profile web add @tecfancy/dsh-dock-terminal
 > `dsh plugin --profile web add @tecfancy/dsh-dock-terminal`。
 > Windows 新机器上 profile 由官方模板初始化（模板不含 allowBuilds），必踩此步。
 
+### Default shell and look (Windows)
+
+On Windows the default shell chain is **PowerShell 7** (`pwsh`, official or
+winget install, then the Store alias), then Windows PowerShell 5.1, and only
+when neither exists does it fall back to `cmd.exe`. That ordering matters for
+posh-mocha style setups: oh-my-posh and the profile customizations live under
+the pwsh 7 `$PROFILE` path, so spawning `cmd.exe` (or 5.1) starts with none of
+the prompt, font or color customization.
+
+The popover terminal renders with a Nerd Font stack
+(`Maple Mono NF CN` → `CaskaydiaCove NFM` → JetBrainsMono Nerd Font → system
+monospace, dropping whichever family is not installed) and the
+**Catppuccin Mocha** 16-color palette, matching the posh-mocha kit so
+oh-my-posh prompts, PSReadLine colors and eza icons look identical to
+Windows Terminal. To force another shell, configure it explicitly:
+
+```yaml
+config:
+  shell: C:\Program Files\Git\bin\bash.exe
+```
+
+No `shellArgs` needed for explicit shells: the plugin only adds `-NoLogo`
+when the resolved shell is PowerShell, and `-l` on POSIX.
+
 Requires `@deepseek-ai/cordis` `^4.0.1` as a peer dependency and the
 `dsh-dock-host` client service `dockButtons` (the popover button is
 registered through it).
@@ -91,12 +115,12 @@ working for the UI popover and simply skips the tool set.
 
 ## Config
 
-| Key                | Default              | Purpose                                     |
-| ------------------ | -------------------- | ------------------------------------------- |
-| `shell`            | `""` (auto $SHELL)   | Explicit shell binary                       |
-| `shellArgs`        | `[]` (`-l` on POSIX) | Shell startup args (replaces default)       |
-| `maxPerSession`    | `2`                  | Concurrent terminals per conversation       |
-| `reconnectGraceMs` | `30000`              | Grace before a dropped socket kills its pty |
+| Key                | Default                                                           | Purpose                                     |
+| ------------------ | ----------------------------------------------------------------- | ------------------------------------------- |
+| `shell`            | `""` (auto: $SHELL on POSIX, PowerShell 7 > 5.1 > cmd on Windows) | Explicit shell binary                       |
+| `shellArgs`        | `[]` (`-l` POSIX, `-NoLogo` for PowerShell)                       | Shell startup args (replaces default)       |
+| `maxPerSession`    | `2`                                                               | Concurrent terminals per conversation       |
+| `reconnectGraceMs` | `30000`                                                           | Grace before a dropped socket kills its pty |
 
 ## Commands
 

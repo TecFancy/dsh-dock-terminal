@@ -1,6 +1,6 @@
 import { chmodSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, win32 } from "node:path";
 
 /**
  * PTY lifecycle for dsh-dock-terminal. One node-pty process per
@@ -58,8 +58,9 @@ export class PtyManager {
   ) {
     this.nodePty = nodePty;
     this.config = config;
-    this.shell = config.shell !== "" ? config.shell : defaultShell();
-    this.shellArgs = config.shellArgs.length > 0 ? config.shellArgs : defaultShellArgs();
+    const shell = config.shell !== "" ? config.shell : defaultShell();
+    this.shell = shell;
+    this.shellArgs = config.shellArgs.length > 0 ? config.shellArgs : defaultShellArgs(shell);
   }
 
   /** Open (or reuse) the pty for a session/tab key. */
@@ -212,13 +213,61 @@ export function ensureSpawnHelper(): void {
   }
 }
 
-function defaultShell(): string {
-  if (process.platform === "win32") return process.env["COMSPEC"] ?? "powershell.exe";
-  return process.env["SHELL"] ?? "/bin/bash";
+/**
+ * Platform default shell, resolved at construction. Windows prefers
+ * PowerShell 7 (posh-mocha style profiles only load under pwsh), then
+ * Windows PowerShell 5.1, and only falls back to cmd.exe when neither
+ * exists. Posix uses $SHELL (login shell, matching a fresh terminal).
+ * Dependencies are injectable so the binary/OS matrix stays unit-testable.
+ */
+export function defaultShell(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  exists: (path: string) => boolean = existsSync,
+): string {
+  if (platform === "win32") return detectWindowsShell(env, exists);
+  return env["SHELL"] ?? "/bin/bash";
 }
 
-function defaultShellArgs(): string[] {
-  return process.platform === "win32" ? [] : ["-l"];
+/**
+ * First install that exists wins: the official/winget pwsh 7 location,
+ * then the Store app-execution alias, then the in-box Windows PowerShell
+ * 5.1. Nothing left means the caller's COMSPEC (cmd.exe).
+ */
+function detectWindowsShell(env: NodeJS.ProcessEnv, exists: (path: string) => boolean): string {
+  const programFiles = env["ProgramFiles"] ?? "C:\\Program Files";
+  const systemRoot = env["SystemRoot"] ?? "C:\\Windows";
+  // win32 path API on purpose: env values are Windows paths on every host.
+  const candidates: string[] = [win32.join(programFiles, "PowerShell", "7", "pwsh.exe")];
+  const localAppData = env["LOCALAPPDATA"];
+  if (localAppData !== undefined) {
+    candidates.push(win32.join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe"));
+  }
+  candidates.push(
+    win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+  );
+  for (const candidate of candidates) {
+    if (exists(candidate)) return candidate;
+  }
+  return env["COMSPEC"] ?? "cmd.exe";
+}
+
+/**
+ * Startup args for the resolved shell. Login mode on posix. On Windows the
+ * banner is suppressed for PowerShell only; unknown shells (git bash, WSL,
+ * a custom binary) get no args so nothing the user configured is clobbered.
+ */
+export function defaultShellArgs(
+  shell: string = defaultShell(),
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform === "win32") {
+    const base = win32.basename(shell).toLowerCase();
+    const isPowerShell =
+      base === "pwsh" || base === "pwsh.exe" || base === "powershell" || base === "powershell.exe";
+    return isPowerShell ? ["-NoLogo"] : [];
+  }
+  return ["-l"];
 }
 
 function clampDim(value: number): number {
