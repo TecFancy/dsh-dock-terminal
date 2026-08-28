@@ -60,6 +60,20 @@ npm install @tecfancy/dsh-dock-terminal
 dsh plugin --profile web add @tecfancy/dsh-dock-terminal
 ```
 
+> **pnpm 11 原生构建批准（首个安装必做）**：`node-pty`（宿主 shell 桥）的
+> install script 需要显式批准，否则 `dsh plugin add` 报
+> `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: node-pty@1.1.0`。
+> 在 profile 目录（如 `$DSH_HOME/profiles/web`）的 `pnpm-workspace.yaml` 末尾加：
+>
+> ```yaml
+> allowBuilds:
+>   node-pty: true
+> ```
+>
+> 或在该目录跑一次交互式 `pnpm approve-builds`（选中 node-pty）后再重跑
+> `dsh plugin --profile web add @tecfancy/dsh-dock-terminal`。
+> Windows 新机器上 profile 由官方模板初始化（模板不含 allowBuilds），必踩此步。
+
 Requires `@deepseek-ai/cordis` `^4.0.1` as a peer dependency and the
 `dsh-dock-host` client service `dockButtons` (the popover button is
 registered through it).
