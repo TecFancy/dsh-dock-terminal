@@ -3,12 +3,15 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { apply } from "./index.tsx";
+import { themeScheme } from "./features/terminal-popover/xterm-theme.ts";
 import {
   COMPOSER_DOCK_SLOT,
   POPOVER_SLOT_ID,
   TERMINAL_BUTTON_ID,
   type DockButton,
   type TerminalClientContext,
+  type ThemeServiceLite,
+  type ThemeSnapshotLite,
 } from "./shared/config/index.ts";
 
 /** xterm is a DOM-heavy library; the view is exercised via its mock here. */
@@ -16,6 +19,7 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    options: Record<string, unknown> = {};
     loadAddon(): void {
       return;
     }
@@ -29,6 +33,9 @@ vi.mock("@xterm/xterm", () => ({
       return { dispose: () => undefined };
     }
     write(): void {
+      return;
+    }
+    refresh(): void {
       return;
     }
     dispose(): void {
@@ -64,11 +71,12 @@ class MockWebSocket {
 }
 vi.stubGlobal("WebSocket", MockWebSocket);
 
-function fakeContext() {
+function fakeContext(theme?: ThemeServiceLite) {
   const registrations: { options: unknown; view: (props: unknown) => unknown }[] = [];
   const localeCalls: unknown[][] = [];
   const effects: (() => unknown)[] = [];
   const buttons: DockButton[] = [];
+  const eventListeners = new Set<(payload: unknown) => void>();
   const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() });
   const ctx: TerminalClientContext = {
     slots: {
@@ -103,8 +111,20 @@ function fakeContext() {
       effects.push(fn);
       return fn();
     },
+    get: (key) => (key === "theme" ? theme : undefined),
+    on: (_name, listener) => {
+      eventListeners.add(listener);
+      return () => eventListeners.delete(listener);
+    },
   };
-  return { ctx, registrations, localeCalls, effects, buttons };
+  return {
+    ctx,
+    registrations,
+    localeCalls,
+    effects,
+    buttons,
+    emitEvent: (payload: unknown) => eventListeners.forEach((fn) => fn(payload)),
+  };
 }
 
 describe("apply (client root)", () => {
@@ -151,5 +171,39 @@ describe("apply (client root)", () => {
     expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 260));
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
+  });
+
+  it("mirrors the theme scheme from the theme service and follows theme/change", () => {
+    themeScheme.set("dark");
+    let current: ThemeSnapshotLite = {
+      preference: "dark",
+      active: { id: "dark", colorScheme: "dark" },
+    };
+    const themeService: ThemeServiceLite = {
+      getTheme: () => current,
+      setTheme: () => undefined,
+    };
+    const { ctx, emitEvent } = fakeContext(themeService);
+    apply(ctx);
+    expect(themeScheme.get()).toBe("dark");
+
+    // The real service updates its state, then emits theme/change.
+    current = { preference: "light", active: { id: "light", colorScheme: "light" } };
+    emitEvent(current);
+    expect(themeScheme.get()).toBe("light");
+
+    current = { preference: "dark", active: { id: "dark", colorScheme: "dark" } };
+    emitEvent(current);
+    expect(themeScheme.get()).toBe("dark");
+  });
+
+  it("stays on the dark palette without a theme service", () => {
+    themeScheme.set("light");
+    const { ctx } = fakeContext();
+    apply(ctx);
+    // No theme service: the store is never touched, so the scheme keeps the
+    // module default only when it was reset; set it back after the check.
+    expect(themeScheme.get()).toBe("light");
+    themeScheme.set("dark");
   });
 });

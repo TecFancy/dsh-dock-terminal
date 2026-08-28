@@ -5,6 +5,12 @@ import { syncLocale, t } from "./i18n.ts";
 import { createTerminalStore, terminalStore } from "./terminal-store.ts";
 import { TerminalView } from "./TerminalView.tsx";
 import { TerminalPopover } from "./TerminalPopover.tsx";
+import { themeScheme } from "./xterm-theme.ts";
+
+/** Captured xterm instances so tests can inspect options.theme. */
+const xtermState = vi.hoisted(() => ({
+  instances: [] as { options: Record<string, unknown> }[],
+}));
 
 /** jsdom has no usable WebSocket; the view only needs construction + events. */
 class MockWebSocket {
@@ -31,10 +37,15 @@ class MockWebSocket {
   }
 }
 vi.stubGlobal("WebSocket", MockWebSocket);
-vi.mock("@xterm/xterm", () => ({
-  Terminal: class {
+vi.mock("@xterm/xterm", () => {
+  class Terminal {
     cols = 80;
     rows = 24;
+    options: Record<string, unknown>;
+    constructor(options?: Record<string, unknown>) {
+      this.options = options ?? {};
+      xtermState.instances.push(this);
+    }
     loadAddon(): void {
       return;
     }
@@ -50,11 +61,15 @@ vi.mock("@xterm/xterm", () => ({
     write(): void {
       return;
     }
+    refresh(): void {
+      return;
+    }
     dispose(): void {
       return;
     }
-  },
-}));
+  }
+  return { Terminal };
+});
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
     fit(): void {
@@ -317,6 +332,21 @@ describe("TerminalView", () => {
     expect(parked).toHaveLength(1);
     expect(closed).toHaveLength(0);
     store.closeTab(first);
+  });
+
+  it("repaints the xterm palette when the theme scheme changes", () => {
+    MockWebSocket.instances = [];
+    xtermState.instances = [];
+    themeScheme.set("dark");
+    renderView("s3");
+    const xterm = xtermState.instances.at(-1)!;
+    expect(xterm.options["theme"]).toMatchObject({ background: "#1e1e2e" });
+
+    act(() => {
+      themeScheme.set("light");
+    });
+    expect(xterm.options["theme"]).toMatchObject({ background: "#eff1f5" });
+    themeScheme.set("dark");
   });
 });
 

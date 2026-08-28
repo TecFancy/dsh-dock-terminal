@@ -11,5 +11,7 @@ export type {
   SlotRegisterOptions,
   SlotsService,
   TerminalClientContext,
+  ThemeServiceLite,
+  ThemeSnapshotLite,
 } from "./context.ts";
 export { COMPOSER_DOCK_SLOT, POPOVER_SLOT_ID, TERMINAL_BUTTON_ID } from "./context.ts";

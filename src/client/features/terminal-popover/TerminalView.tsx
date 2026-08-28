@@ -4,6 +4,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { t } from "./i18n.ts";
 import { terminalStore, type TerminalStore } from "./terminal-store.ts";
+import { themeScheme, xtermPaletteFor } from "./xterm-theme.ts";
 import styles from "./terminal.module.css";
 
 /** Host metadata frame content (sent first on every attach). */
@@ -80,34 +81,22 @@ export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewPr
       fontFamily:
         "'Maple Mono NF CN', 'CaskaydiaCove NFM', 'CaskaydiaCove Nerd Font', 'JetBrainsMono Nerd Font', 'Cascadia Code', 'Consolas', 'SFMono-Regular', 'Liberation Mono', Menlo, monospace",
       scrollback: 5000,
-      // Catppuccin Mocha, the same palette as the posh-mocha kit, so ANSI
-      // colors in pwsh (PSReadLine, eza, oh-my-posh) match Windows Terminal.
-      theme: Object.freeze({
-        background: "#1e1e2e",
-        foreground: "#cdd6f4",
-        cursor: "#f5e0dc",
-        selectionBackground: "#585b70",
-        black: "#45475a",
-        red: "#f38ba8",
-        green: "#a6e3a1",
-        yellow: "#f9e2af",
-        blue: "#89b4fa",
-        magenta: "#f5c2e7",
-        cyan: "#94e2d5",
-        white: "#bac2de",
-        brightBlack: "#585b70",
-        brightRed: "#f38ba8",
-        brightGreen: "#a6e3a1",
-        brightYellow: "#f9e2af",
-        brightBlue: "#89b4fa",
-        brightMagenta: "#f5c2e7",
-        brightCyan: "#94e2d5",
-        brightWhite: "#a6adc8",
-      }),
+      // Catppuccin palette that follows the dsh theme: Mocha in dark mode
+      // (the posh-mocha kit palette, so ANSI colors in pwsh match Windows
+      // Terminal), Latte in light mode. The palette store is seeded by the
+      // client root from the theme service and repainted on theme/change.
+      theme: xtermPaletteFor(themeScheme.get()),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);
+    // Repaint the palette when the dsh theme switches (options.theme alone
+    // does not force a canvas redraw; refresh the visible rows).
+    const repaintPalette = () => {
+      term.options.theme = xtermPaletteFor(themeScheme.get());
+      term.refresh(0, term.rows - 1);
+    };
+    const unsubscribeTheme = themeScheme.subscribe(repaintPalette);
     const fitNow = () => {
       try {
         fit.fit();
@@ -135,6 +124,7 @@ export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewPr
     return () => {
       mountedRef.current = false;
       observer?.disconnect();
+      unsubscribeTheme();
       // The WebSocket lifecycle belongs to the connect effect below: its
       // cleanup decides the wire frame (park on a session switch while the
       // popover stays open, close when the popover collapses). Sending any

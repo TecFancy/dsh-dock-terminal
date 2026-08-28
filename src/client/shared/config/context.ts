@@ -70,6 +70,19 @@ export interface ComposerDockProps {
   useProjection?: unknown;
 }
 
+/** Minimal shape of the client `theme` service snapshot (`theme/change`). */
+export interface ThemeSnapshotLite {
+  preference?: string;
+  active: { id: string; colorScheme: "light" | "dark" };
+  revision?: number;
+}
+
+/** Minimal shape of the client `theme` service (optional service). */
+export interface ThemeServiceLite {
+  getTheme(): ThemeSnapshotLite;
+  setTheme(id: string): void;
+}
+
 /** The cordis client context shape this plugin relies on. */
 export interface TerminalClientContext {
   slots: SlotsService;
@@ -77,6 +90,10 @@ export interface TerminalClientContext {
   dockButtons: DockButtonsRegistry;
   logger: (namespace: string) => DockLogger;
   effect: (fn: () => unknown, label?: string) => unknown;
+  /** Optional cordis lookup for optional services (the theme service). */
+  get?(key: string): unknown;
+  /** Client event bus (theme/change); returns the disposer. */
+  on?(this: void, name: string, listener: (payload: unknown) => void): unknown;
 }
 
 /** The `conversation.composer.dock` slot key. */

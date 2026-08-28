@@ -2,12 +2,14 @@ import { TerminalPopover } from "./features/terminal-popover/TerminalPopover.tsx
 import { LOCALES, LOCALE_NS, syncLocale } from "./features/terminal-popover/i18n.ts";
 import { terminalStore } from "./features/terminal-popover/terminal-store.ts";
 import { TerminalIcon } from "./features/terminal-popover/TerminalIcon.tsx";
+import { schemeOf, themeScheme } from "./features/terminal-popover/xterm-theme.ts";
 import {
   COMPOSER_DOCK_SLOT,
   POPOVER_SLOT_ID,
   TERMINAL_BUTTON_ID,
   type ComposerDockProps,
   type TerminalClientContext,
+  type ThemeServiceLite,
 } from "./shared/config/index.ts";
 
 /**
@@ -30,6 +32,18 @@ export function apply(ctx: TerminalClientContext): void {
   const syncNow = () => syncLocale(ctx.locale.getSnapshot?.() ?? "en");
   ctx.effect(() => ctx.locale.subscribe(syncNow), "dsh-dock-terminal: locale subscription");
   syncNow();
+
+  // Mirror the active theme scheme into the terminal palette store so every
+  // xterm view repaints on light/dark switches. The theme service is
+  // optional (older dsh web hosts lack it); without it the terminal stays
+  // on the dark Catppuccin Mocha palette.
+  const theme = ctx.get?.("theme") as ThemeServiceLite | undefined;
+  const onEvent = ctx.on;
+  if (theme !== undefined && onEvent !== undefined) {
+    const syncTheme = () => themeScheme.set(schemeOf(theme.getTheme()));
+    syncTheme();
+    ctx.effect(() => onEvent("theme/change", () => syncTheme()), "dsh-dock-terminal: theme sync");
+  }
 
   const bind = ctx.locale.bind(LOCALE_NS);
   ctx.effect(
