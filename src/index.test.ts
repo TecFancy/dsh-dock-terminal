@@ -63,6 +63,15 @@ describe("Config schema", () => {
     expect(() => Config.parse({ maxPerSession: 0 })).toThrow();
     expect(() => Config.parse({ maxPerSession: 99 })).toThrow();
   });
+
+  it("accepts an absent config block like the cordis loader passes", () => {
+    // The loader validates the plugin row's config against the exported
+    // Config schema even when the patch inserts no `config:` key; a bare
+    // z.object() would reject undefined ("Required") on newer cordis builds.
+    const cfg = Config.parse(undefined);
+    expect(cfg.maxPerSession).toBe(2);
+    expect(cfg.reconnectGraceMs).toBe(30000);
+  });
 });
 
 describe("apply (host root)", () => {
