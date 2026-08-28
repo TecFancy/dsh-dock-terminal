@@ -98,6 +98,12 @@ export function TerminalView({ sessionId, tabId, onMeta, store }: TerminalViewPr
     };
     const unsubscribeTheme = themeScheme.subscribe(repaintPalette);
     const fitNow = () => {
+      // A hidden pane (tab switch) or a collapsed popover measures 0x0.
+      // Fitting it would resize the pty to a junk minimum (the fit addon
+      // falls back to a tiny grid), reflowing and losing the buffer while
+      // the pane is away. Fit only when the container is actually laid out;
+      // the ResizeObserver catches the real size when it comes back.
+      if (container.clientWidth === 0 || container.clientHeight === 0) return;
       try {
         fit.fit();
       } catch {

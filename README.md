@@ -115,15 +115,14 @@ it matches the composer card in both light and dark themes. The xterm surface
 follows the active theme scheme through the client `theme` service
 (`theme/change`): **Catppuccin Mocha** in dark mode (matching the posh-mocha
 kit) and **Catppuccin Latte** in light mode, so the terminal is never a dark
-box floating in a light UI. The panel mirrors the composer card: it is capped
-at the card's own 780 px max width and centered with it (the app layout keeps
-the column inside the visible content area, so right-side panels never cover
-it). Expand rises from below and collapse sinks downward (grid rows + opacity
-
-- a vertical slide over 200 ms, honoring `prefers-reduced-motion`). The dock
-  button carries an inline SVG terminal glyph and the label `Terminal`/`终端`;
-  rendering the SVG glyph requires **dsh-dock-host >= 0.2.1** (older hosts show
-  it as a text prefix).
+box floating in a light UI. The panel fills the whole composer dock band (the
+app layout keeps the band inside the visible content column, so right-side
+panels never cover it and terminal output gets the full width). Expand rises
+from below and collapse sinks downward (grid rows + opacity + a vertical slide
+over 200 ms, honoring `prefers-reduced-motion`). The dock button carries an
+inline SVG terminal glyph and the label `Terminal`/`终端`; rendering the SVG
+glyph requires **dsh-dock-host >= 0.2.1** (older hosts show it as a text
+prefix).
 
 Collapse keeps the ptys running: the popover × only hides the panel (each
 tab sends a `park` frame), so a build or long command keeps executing and

@@ -10,6 +10,7 @@ import { themeScheme } from "./xterm-theme.ts";
 /** Captured xterm instances so tests can inspect options.theme. */
 const xtermState = vi.hoisted(() => ({
   instances: [] as { options: Record<string, unknown> }[],
+  fitCalls: 0,
 }));
 
 /** jsdom has no usable WebSocket; the view only needs construction + events. */
@@ -73,7 +74,7 @@ vi.mock("@xterm/xterm", () => {
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
     fit(): void {
-      return;
+      xtermState.fitCalls += 1;
     }
   },
 }));
@@ -347,6 +348,15 @@ describe("TerminalView", () => {
     });
     expect(xterm.options["theme"]).toMatchObject({ background: "#eff1f5" });
     themeScheme.set("dark");
+  });
+
+  it("never fits a zero-size container (hidden pane keeps its size)", () => {
+    MockWebSocket.instances = [];
+    xtermState.fitCalls = 0;
+    renderView("s4");
+    // jsdom containers measure 0x0; fitting them would shrink the pty to a
+    // junk minimum and lose the buffer, so the guard must skip the fit.
+    expect(xtermState.fitCalls).toBe(0);
   });
 });
 

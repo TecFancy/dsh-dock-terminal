@@ -1,19 +1,17 @@
 /* Terminal popover (conversation.composer.dock): a compact panel under the
  * composer card, hosting the xterm view and its tab bar. The shell follows
  * the dsh theme tokens (--dsw-alias-*), matching the composer card in both
- * light and dark themes; the xterm surface itself stays Catppuccin Mocha,
- * like an embedded dark terminal in a light editor. */
+ * light and dark themes; the xterm surface follows the active theme scheme
+ * (Catppuccin Mocha in dark mode, Catppuccin Latte in light mode). */
 
 /* Mount gate: grid-template-rows 0fr <-> 1fr animates the panel height with
- * its content while opacity fades the chrome. The composer card (uV2eYG_card)
- * is capped at 780px and centered inside the flex column; the panel mirrors
- * that cap so its edges sit exactly on the card's edges whether or not the
- * app shrinks the column (right-side panels open), and the inner slide
- * (translateY) makes open rise from below and collapse sink downward. */
+ * its content while opacity fades the chrome. The panel fills the whole
+ * composer dock band (which the app layout keeps inside the visible content
+ * column, so right-side panels never cover it); the inner slide (translateY)
+ * makes open rise from below and collapse sink downward. */
 .wrap {
   margin: 6px auto;
   width: 100%;
-  max-width: 780px;
   display: grid;
   grid-template-rows: 1fr;
   opacity: 1;
@@ -25,7 +23,6 @@
 .wrapCollapsed {
   margin: 6px auto;
   width: 100%;
-  max-width: 780px;
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
