@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { syncLocale, t } from "./i18n.ts";
 import { createTerminalStore, terminalStore } from "./terminal-store.ts";
@@ -331,8 +331,9 @@ describe("TerminalPopover", () => {
       store.open();
     });
     rerender(<TerminalPopover sessionId="s1" store={store} />);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    });
 
     // The header close button collapses the panel; the wrapper stays for
     // the transition and then unmounts.

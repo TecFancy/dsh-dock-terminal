@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { apply } from "./index.tsx";
@@ -138,8 +138,11 @@ describe("apply (client root)", () => {
     act(() => {
       void buttons[0]!.run({});
     });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    // The mount beat is a 0 ms timer; poll instead of sleeping so slow
+    // runners (Windows CI) do not race it.
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    });
 
     act(() => {
       void buttons[0]!.run({});
