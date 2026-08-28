@@ -1,6 +1,7 @@
 import { chmodSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, dirname, join, win32 } from "node:path";
+import { userInfo } from "node:os";
+import { dirname, join, win32 } from "node:path";
 
 /**
  * PTY lifecycle for dsh-dock-terminal. One node-pty process per
@@ -120,9 +121,11 @@ export class PtyManager {
     return handle !== undefined && !handle.exited;
   }
 
-  /** The resolved shell binary basename, for display (e.g. "bash"). */
+  /** The resolved shell binary basename, for display (e.g. "bash", "pwsh"). */
   shellName(): string {
-    return basename(this.shell);
+    const normalized = this.shell.replace(/\\/g, "/");
+    const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+    return base.replace(/\.(exe|cmd|bat|com)$/i, "");
   }
 
   /** Close a handle now, canceling any pending grace timer (user close). */
@@ -217,38 +220,85 @@ export function ensureSpawnHelper(): void {
  * Platform default shell, resolved at construction. Windows prefers
  * PowerShell 7 (posh-mocha style profiles only load under pwsh), then
  * Windows PowerShell 5.1, and only falls back to cmd.exe when neither
- * exists. Posix uses $SHELL (login shell, matching a fresh terminal).
+ * exists. Posix uses $SHELL when set, then the account login shell from
+ * passwd (service managers often start dsh without $SHELL), then /bin/bash.
  * Dependencies are injectable so the binary/OS matrix stays unit-testable.
  */
 export function defaultShell(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   exists: (path: string) => boolean = existsSync,
+  loginShell: string | null = readLoginShell(),
 ): string {
   if (platform === "win32") return detectWindowsShell(env, exists);
-  return env["SHELL"] ?? "/bin/bash";
+  const envShell = env["SHELL"];
+  if (envShell !== undefined && envShell.trim() !== "") return envShell;
+  if (loginShell !== null && loginShell.trim() !== "") return loginShell;
+  return "/bin/bash";
+}
+
+/** The account login shell from passwd; null when the uid has no entry. */
+function readLoginShell(): string | null {
+  try {
+    const shell = userInfo().shell;
+    return typeof shell === "string" && shell.trim() !== "" ? shell : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * First install that exists wins: the official/winget pwsh 7 location,
- * then the Store app-execution alias, then the in-box Windows PowerShell
- * 5.1. Nothing left means the caller's COMSPEC (cmd.exe).
+ * Candidate directories that may contain a pwsh.exe on Windows: PATH
+ * entries first, then the machine install locations (including the preview
+ * channel and the 32-bit-process ProgramW6432 case), then per-user layouts
+ * (Store alias, MSI/portable installs). De-duped while preserving order.
+ */
+function windowsPwshCandidateDirs(env: NodeJS.ProcessEnv): string[] {
+  const dirs: string[] = [];
+  const path = env["PATH"];
+  if (path !== undefined) {
+    // The win32 branch always uses the Windows PATH separator; hardcoding it
+    // keeps the resolver testable from POSIX runners.
+    for (const entry of path.split(";")) {
+      const trimmed = entry.trim().replace(/^"|"$/g, "");
+      if (trimmed !== "") dirs.push(trimmed);
+    }
+  }
+  for (const programFiles of [env["ProgramW6432"], env["ProgramFiles"]]) {
+    if (programFiles === undefined || programFiles.trim() === "") continue;
+    dirs.push(win32.join(programFiles, "PowerShell", "7"));
+    dirs.push(win32.join(programFiles, "PowerShell", "7-preview"));
+  }
+  const localAppData = env["LOCALAPPDATA"];
+  if (localAppData !== undefined && localAppData.trim() !== "") {
+    dirs.push(win32.join(localAppData, "Microsoft", "WindowsApps"));
+    dirs.push(win32.join(localAppData, "Microsoft", "PowerShell", "7"));
+    dirs.push(win32.join(localAppData, "Microsoft", "PowerShell", "7-preview"));
+    dirs.push(win32.join(localAppData, "Programs", "PowerShell", "7"));
+  }
+  return [...new Set(dirs)];
+}
+
+/**
+ * First pwsh.exe found wins (PATH first so portable/custom installs beat
+ * the default location), then the in-box Windows PowerShell 5.1, then the
+ * caller's COMSPEC (cmd.exe). win32 path API on purpose: env values are
+ * Windows paths on every host.
  */
 function detectWindowsShell(env: NodeJS.ProcessEnv, exists: (path: string) => boolean): string {
-  const programFiles = env["ProgramFiles"] ?? "C:\\Program Files";
-  const systemRoot = env["SystemRoot"] ?? "C:\\Windows";
-  // win32 path API on purpose: env values are Windows paths on every host.
-  const candidates: string[] = [win32.join(programFiles, "PowerShell", "7", "pwsh.exe")];
-  const localAppData = env["LOCALAPPDATA"];
-  if (localAppData !== undefined) {
-    candidates.push(win32.join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe"));
-  }
-  candidates.push(
-    win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-  );
-  for (const candidate of candidates) {
+  for (const dir of windowsPwshCandidateDirs(env)) {
+    const candidate = win32.join(dir, "pwsh.exe");
     if (exists(candidate)) return candidate;
   }
+  const systemRoot = env["SystemRoot"] ?? "C:\\Windows";
+  const powerShell51 = win32.join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  if (exists(powerShell51)) return powerShell51;
   return env["COMSPEC"] ?? "cmd.exe";
 }
 

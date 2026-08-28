@@ -76,12 +76,15 @@ dsh plugin --profile web add @tecfancy/dsh-dock-terminal
 
 ### Default shell and look (Windows)
 
-On Windows the default shell chain is **PowerShell 7** (`pwsh`, official or
-winget install, then the Store alias), then Windows PowerShell 5.1, and only
-when neither exists does it fall back to `cmd.exe`. That ordering matters for
-posh-mocha style setups: oh-my-posh and the profile customizations live under
-the pwsh 7 `$PROFILE` path, so spawning `cmd.exe` (or 5.1) starts with none of
-the prompt, font or color customization.
+On Windows the default shell chain is **PowerShell 7** (`pwsh` found on
+`PATH` first, then the official/winget install, the preview channel, the
+per-user MSI/portable layouts and the Store alias), then Windows PowerShell
+5.1, and only when neither exists does it fall back to `cmd.exe`. On POSIX
+it is `$SHELL`, then the account login shell from passwd (service managers
+often start dsh without `$SHELL`), then `/bin/bash`. That ordering matters
+for posh-mocha style setups: oh-my-posh and the profile customizations live
+under the pwsh 7 `$PROFILE` path, so spawning `cmd.exe` (or 5.1) starts with
+none of the prompt, font or color customization.
 
 The popover terminal renders with a Nerd Font stack
 (`Maple Mono NF CN` → `CaskaydiaCove NFM` → JetBrainsMono Nerd Font → system
