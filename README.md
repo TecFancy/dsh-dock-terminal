@@ -20,10 +20,10 @@ WebSocket bridge.
 
 ```
 src/
-  index.ts                     host root: /dock-terminal/ws upgrade route, config
-  config.ts                    config schema (shell, shellArgs, maxPerSession, ...)
-  pty.ts                       PtyManager: one node-pty per session/tab key
-  terminal-server.ts           wire protocol: meta frame, transcript replay, trust fence
+  index.ts                     host root: /dock-terminal/ws upgrade, session/disposed, tools
+  shared/config/               Config schema (shell, shellArgs, maxPerSession, ...)
+  features/pty-bridge/         PtyManager + /dock-terminal/ws wire protocol
+  features/agent-terminal/     optional model terminal tools (official seam)
   client/
     index.tsx                  client root: dock button + composer.dock popover
     shared/config/context.ts   structural contracts (slots, locale, dockButtons)
@@ -172,17 +172,19 @@ after the tag, so `latest` always refers to a verified release.
 
 ## Commands
 
-| Task          | Command                                            |
-| ------------- | -------------------------------------------------- |
-| Install       | `npm install`                                      |
-| Type-check    | `npm run type-check`                               |
-| Lint          | `npm run lint` / `npm run lint:no-emdash`          |
-| Format        | `npm run format:check` (fix with `npm run format`) |
-| Test          | `npm run test` / `npm run test:coverage`           |
-| Aliases drift | `npm run aliases:check`                            |
-| Build         | `npm run build` (host tsc + tsdown client bundle)  |
-| Bundle verify | `npm run bundle:check`                             |
-| Full gate     | `npm run verify` (must stay green)                 |
+| Task             | Command                                            |
+| ---------------- | -------------------------------------------------- |
+| Install          | `npm install`                                      |
+| Type-check       | `npm run type-check`                               |
+| Lint             | `npm run lint` / `npm run lint:no-emdash`          |
+| Format           | `npm run format:check` (fix with `npm run format`) |
+| Test             | `npm run test` / `npm run test:coverage`           |
+| Aliases drift    | `npm run aliases:check`                            |
+| Slice boundaries | `npm run slice:check`                              |
+| Lockfile hosts   | `npm run lock:check`                               |
+| Build            | `npm run build` (host tsc + tsdown client bundle)  |
+| Bundle verify    | `npm run bundle:check`                             |
+| Full gate        | `npm run verify` (must stay green)                 |
 
 ## Requirements
 

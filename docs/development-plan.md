@@ -95,16 +95,17 @@ index.ts）已逐项读过。
 **仓库**（`@tecfancy/dsh-dock-terminal@0.1.0`，独立 git，commit `817ded9`）：
 
 ```
-src/index.ts        host 根：/dock-terminal/ws upgrade 路由 + 装配
-src/config.ts       Config（shell/shellArgs/maxPerSession/reconnectGraceMs）
-src/pty.ts          PtyManager（每 `${sessionId}:${tabId}` 一个 node-pty，
-                    1MB transcript ring、park/scheduleClose、懒加载+spawn-helper）
-src/terminal-server.ts  协议：文本=stdin；JSON 帧 close/park/resize；
-                    isTrustedRequest（loopback / 同源 origin 围栏）；
-                    会话 cwd（session header → process.cwd()）
+src/index.ts                 host 根：/dock-terminal/ws upgrade 路由 + 装配
+src/shared/config/           Config（shell/shellArgs/maxPerSession/reconnectGraceMs）
+src/features/pty-bridge/     PtyManager + /dock-terminal/ws 协议
+                             （每 `${sessionId}:${tabId}` 一个 node-pty，
+                             1MB transcript ring、park/scheduleClose、
+                             懒加载+spawn-helper；文本=stdin；JSON 帧
+                             close/park/resize；isTrustedRequest 围栏）
+src/features/agent-terminal/ 可选模型 terminal 工具（官方 seam）
 src/client/
-  index.tsx         dock 按钮（order 10, primary）+ composer.dock 槽位
-  features/terminal-popover/  TerminalPopover/TerminalView/popover-store/i18n
+  index.tsx                  dock 按钮（order 10, primary）+ composer.dock 槽位
+  features/terminal-popover/ TerminalPopover/TerminalView/terminal-store/i18n
   shared/config/context.ts   结构契约（slots/locale/dockButtons）
 ```
 
