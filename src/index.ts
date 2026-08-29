@@ -1,10 +1,15 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
-import { Config, type TerminalConfig } from "./config.js";
 import { registerAgentTerminalTools, type TerminalsLike } from "./features/agent-terminal/index.js";
-import { ensureSpawnHelper, loadNodePty, PtyManager } from "./pty.js";
-import { attachTerminal, isTrustedRequest } from "./terminal-server.js";
+import {
+  attachTerminal,
+  ensureSpawnHelper,
+  isTrustedRequest,
+  loadNodePty,
+  PtyManager,
+} from "./features/pty-bridge/index.js";
+import { Config, type TerminalConfig } from "./shared/config/index.js";
 
 /**
  * dsh-dock-terminal host half: owns the node-pty shell processes and the
@@ -28,9 +33,10 @@ export const name = "dsh-dock-terminal";
 export const inject = ["webServer", "tools"] as const;
 
 export { Config };
+export type { TerminalConfig };
 
-export function apply(ctx: RuntimeContext, config: unknown): void {
-  const resolved: TerminalConfig = Config.parse(config ?? {});
+export function apply(ctx: RuntimeContext, config?: Parameters<typeof Config>[0]): void {
+  const resolved: TerminalConfig = Config(config);
   ensureSpawnHelper();
   const nodePty = loadNodePty();
   if (nodePty === null) {

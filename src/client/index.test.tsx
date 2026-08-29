@@ -2,8 +2,8 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import { themeScheme } from "./features/terminal-popover/index.ts";
 import { apply } from "./index.tsx";
-import { themeScheme } from "./features/terminal-popover/xterm-theme.ts";
 import {
   COMPOSER_DOCK_SLOT,
   POPOVER_SLOT_ID,

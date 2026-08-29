@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { PtyManager } from "./features/pty-bridge/index.js";
 import { apply, Config } from "./index.js";
-import { PtyManager } from "./pty.js";
 
 /** Minimal fake pty (records writes/resizes, exposes simple emit helpers). */
 function fakePty() {
@@ -54,22 +54,22 @@ function fakeModule() {
 
 describe("Config schema", () => {
   it("fills defaults and rejects an out-of-range cap", () => {
-    const cfg = Config.parse({});
+    const cfg = Config({});
     expect(cfg.shell).toBe("");
     expect(cfg.shellArgs).toEqual([]);
     expect(cfg.maxPerSession).toBe(3);
     expect(cfg.reconnectGraceMs).toBe(30000);
 
-    expect(() => Config.parse({ maxPerSession: 99 })).toThrow();
-    expect(Config.parse({ maxPerSession: 0 }).maxPerSession).toBe(0);
-    expect(Config.parse({ maxPerSession: 5 }).maxPerSession).toBe(5);
+    expect(() => Config({ maxPerSession: 99 })).toThrow();
+    expect(Config({ maxPerSession: 0 }).maxPerSession).toBe(0);
+    expect(Config({ maxPerSession: 5 }).maxPerSession).toBe(5);
   });
 
   it("accepts an absent config block like the cordis loader passes", () => {
     // The loader validates the plugin row's config against the exported
-    // Config schema even when the patch inserts no `config:` key; a bare
-    // z.object() would reject undefined ("Required") on newer cordis builds.
-    const cfg = Config.parse(undefined);
+    // Config schema even when the patch inserts no `config:` key; a schema
+    // without a root default would reject undefined on newer cordis builds.
+    const cfg = Config(undefined);
     expect(cfg.maxPerSession).toBe(3);
     expect(cfg.reconnectGraceMs).toBe(30000);
   });
@@ -237,7 +237,7 @@ describe("apply (host root)", () => {
 describe("PtyManager", () => {
   it("spawns one pty per session/tab key and replays its transcript", () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({ shell: "/bin/sh" }));
+    const manager = new PtyManager(module as never, Config({ shell: "/bin/sh" }));
     const handle = manager.open("s1", "t1", "/tmp", 80, 24);
     const fake = module.spawned[0]!;
 
@@ -252,7 +252,7 @@ describe("PtyManager", () => {
 
   it("enforces the per-session cap and kills on close", async () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({ maxPerSession: 1 }));
+    const manager = new PtyManager(module as never, Config({ maxPerSession: 1 }));
     manager.open("s1", "t1", "/tmp", 80, 24);
     expect(() => manager.open("s1", "t2", "/tmp", 80, 24)).toThrow(/terminal limit/);
 
@@ -264,7 +264,7 @@ describe("PtyManager", () => {
 
   it("caps at 0 meaning unlimited: any number of tabs opens", () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({ maxPerSession: 0 }));
+    const manager = new PtyManager(module as never, Config({ maxPerSession: 0 }));
     for (let index = 0; index < 5; index += 1) {
       expect(() => manager.open("s1", `t${index}`, "/tmp", 80, 24)).not.toThrow();
     }
@@ -273,7 +273,7 @@ describe("PtyManager", () => {
 
   it("parks across session switches; a close frame still kills the pty", async () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({ reconnectGraceMs: 200 }));
+    const manager = new PtyManager(module as never, Config({ reconnectGraceMs: 200 }));
     manager.open("s1", "t1", "/tmp", 80, 24);
     const fake = module.spawned[0]!;
 
@@ -289,7 +289,7 @@ describe("PtyManager", () => {
 
   it("closes every pty of a disposed session and spares other sessions", () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({ maxPerSession: 3 }));
+    const manager = new PtyManager(module as never, Config({ maxPerSession: 3 }));
     manager.open("s1", "t1", "/tmp", 80, 24);
     manager.open("s1", "t2", "/tmp", 80, 24);
     manager.open("s2", "t1", "/tmp", 80, 24);
@@ -308,7 +308,7 @@ describe("PtyManager", () => {
 
   it("respawns when the authoritative cwd differs on reconnect", () => {
     const module = fakeModule();
-    const manager = new PtyManager(module as never, Config.parse({}));
+    const manager = new PtyManager(module as never, Config({}));
     manager.open("s1", "t1", process.cwd(), 80, 24);
     const first = module.spawned[0]!;
 

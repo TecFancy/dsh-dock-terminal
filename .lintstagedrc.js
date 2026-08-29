@@ -7,4 +7,5 @@
 export default {
   "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}": ["prettier --write"],
   "*.{ts,tsx}": ["eslint --fix"],
+  "src/**/*.{ts,tsx}": () => ["node scripts/verify-slice-boundaries.mjs"],
 };

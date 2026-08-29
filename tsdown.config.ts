@@ -12,8 +12,8 @@ import { transform } from "lightningcss";
  * Mirrors the official client bundle preset (packages/client/tsdown.client.ts
  * in deepseek-harness):
  * - react / react/jsx-runtime are externalized against the web app's module
- *   table; everything else is inlined (the plugin's own /remote contribution
- *   and its zod codec ship inside the single file);
+ *   table; everything else is inlined (this plugin has no Typert Remote
+ *   contribution; host/client talk over the /dock-terminal/ws bridge);
  * - CSS is compiled by lightningcss inside the bundle: `x.module.css` yields
  *   its hashed class map and injects a tagged style element at factory
  *   execution (`data-plugin-css`), while `x.css?inline` exports compiled text

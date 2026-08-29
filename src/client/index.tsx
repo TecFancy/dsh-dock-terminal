@@ -1,8 +1,13 @@
-import { TerminalPopover } from "./features/terminal-popover/TerminalPopover.tsx";
-import { LOCALES, LOCALE_NS, syncLocale } from "./features/terminal-popover/i18n.ts";
-import { terminalStore } from "./features/terminal-popover/terminal-store.ts";
-import { TerminalIcon } from "./features/terminal-popover/TerminalIcon.tsx";
-import { schemeOf, themeScheme } from "./features/terminal-popover/xterm-theme.ts";
+import {
+  LOCALES,
+  LOCALE_NS,
+  schemeOf,
+  syncLocale,
+  TerminalIcon,
+  TerminalPopover,
+  terminalStore,
+  themeScheme,
+} from "./features/terminal-popover/index.ts";
 import {
   COMPOSER_DOCK_SLOT,
   POPOVER_SLOT_ID,
