@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # development is the daily working branch — broken commits there should
+    # fail CI immediately, not on the next merge to main.
+    branches: [main, development]
   pull_request:
 
 jobs:
