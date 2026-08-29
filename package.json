@@ -68,6 +68,7 @@
     "test:coverage": "vitest run --coverage",
     "aliases:check": "node scripts/check-aliases.mjs",
     "bundle:check": "node scripts/verify-bundle.mjs",
+    "gates": "node scripts/run-gates.mjs",
     "verify": "npm run format:check && npm run lint && npm run lint:no-emdash && npm run aliases:check && npm run type-check && npm run test:coverage && npm run build && npm run bundle:check",
     "prepack": "npm run build && npm run bundle:check",
     "prepare": "node -e \"try { require.resolve('husky') } catch { process.exit(0) } require('node:child_process').execSync('husky', { stdio: 'inherit' })\""

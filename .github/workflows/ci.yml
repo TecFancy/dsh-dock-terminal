@@ -6,8 +6,10 @@ on:
   pull_request:
 
 jobs:
-  verify:
-    name: verify (${{ matrix.os }})
+  # Static/hygiene gates: fast, no build needed. Parallel purpose per job
+  # (M3): failures surface in the owning job instead of a monolithic run.
+  hygiene:
+    name: hygiene (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -37,11 +39,49 @@ jobs:
       - name: Alias drift
         run: npm run aliases:check
 
+  quality:
+    name: quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install
+        run: npm ci
+
       - name: Type-check (host + client)
         run: npm run type-check
 
       - name: Test with coverage
         run: npm run test:coverage
+
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install
+        run: npm ci
 
       - name: Build
         run: npm run build
