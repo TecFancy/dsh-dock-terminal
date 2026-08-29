@@ -17,6 +17,15 @@ It is an instance of the [dsh-plugin-framework](../dsh-plugin-framework)
 scaffold, so the same architecture, layering, and gates apply. The generic
 scaffold docs live in that repository (architecture, slice guide, decisions).
 
+## Branch model
+
+Development happens on `development`; `main` only receives merges from
+`development` (squash PRs, one conventional commit per PR, so release-please
+emits one CHANGELOG entry per change). CI runs on both branches. Never commit
+or push to `main` directly - release-please watches `main` pushes, and
+`feat`/`fix` commits there would trigger release PRs before the work is
+ready. Always work on `development` unless the user says otherwise.
+
 ## Commands
 
 | Task            | Command                                                                       |
