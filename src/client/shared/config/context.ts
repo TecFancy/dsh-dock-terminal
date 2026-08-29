@@ -39,9 +39,14 @@ export interface DockButton {
    * (dock-host 0.2.1+; older hosts render it as a text prefix).
    */
   icon?: string | import("react").ReactElement;
-  enabled?: boolean | ((ctx: unknown) => boolean);
+  enabled?: boolean | ((ctx: DockButtonRunCtx) => boolean);
   primary?: boolean;
-  run(ctx: unknown): void | Promise<void>;
+  run(ctx: DockButtonRunCtx): void | Promise<void>;
+}
+
+/** What the dock-host row passes into `run()` (sessionId is absent on hero). */
+export interface DockButtonRunCtx {
+  sessionId?: string;
 }
 
 /** The client `dockButtons` service published by dsh-dock-host. */

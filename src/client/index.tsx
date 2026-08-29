@@ -5,7 +5,7 @@ import {
   syncLocale,
   TerminalIcon,
   TerminalPopover,
-  terminalStore,
+  terminalStores,
   themeScheme,
 } from "./features/terminal-popover/index.ts";
 import {
@@ -22,8 +22,10 @@ import {
  * dock-host's dockButtons registry and mounts the terminal popover into
  * `conversation.composer.dock` (the band under the composer card).
  *
- * The button toggles the terminal store; the popover renders nothing while
- * closed, and hosts one live xterm per tab otherwise.
+ * The button toggles the store for the current conversation; the popover
+ * renders nothing while that session's store is closed. A new-session /
+ * hero screen has no sessionId and no composer.dock band, so the toggle
+ * is a no-op there.
  */
 export const name = "dsh-dock-terminal";
 export const inject = ["slots", "locale", "dockButtons"] as const;
@@ -59,14 +61,17 @@ export function apply(ctx: TerminalClientContext): void {
         label: () => bind("open"),
         icon: <TerminalIcon />,
         primary: true,
-        run: () => terminalStore.toggle(),
+        enabled: (buttonCtx) =>
+          typeof buttonCtx.sessionId === "string" && buttonCtx.sessionId !== "",
+        run: (buttonCtx) => terminalStores.toggle(buttonCtx.sessionId),
       }),
     "dsh-dock-terminal: dock button",
   );
 
   ctx.slots.inject(COMPOSER_DOCK_SLOT, () =>
-    ctx.slots.register({ name: COMPOSER_DOCK_SLOT, id: POPOVER_SLOT_ID, order: 0 }, (slotProps) => (
-      <TerminalPopover {...(slotProps as ComposerDockProps)} />
-    )),
+    ctx.slots.register({ name: COMPOSER_DOCK_SLOT, id: POPOVER_SLOT_ID, order: 0 }, (slotProps) => {
+      const props = slotProps as ComposerDockProps;
+      return <TerminalPopover key={props.sessionId ?? "none"} {...props} />;
+    }),
   );
 }

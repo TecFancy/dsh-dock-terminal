@@ -2,7 +2,12 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { syncLocale, t } from "./i18n.ts";
-import { createTerminalStore, terminalStore } from "./terminal-store.ts";
+import {
+  createTerminalSessionStores,
+  createTerminalStore,
+  terminalStore,
+  terminalStores,
+} from "./terminal-store.ts";
 import { TerminalView } from "./TerminalView.tsx";
 import { TerminalPopover } from "./TerminalPopover.tsx";
 import { themeScheme } from "./xterm-theme.ts";
@@ -137,6 +142,29 @@ describe("terminal store", () => {
     expect(store.addTab()).toBeNull();
     expect(store.tabs()).toHaveLength(2);
     expect(store.maxPerSession()).toBe(2);
+  });
+
+  it("keeps one store per session and ignores a toggle with no sessionId", () => {
+    const stores = createTerminalSessionStores();
+    stores.toggle(undefined);
+    stores.toggle("");
+    const a = stores.storeFor("s1");
+    expect(a.isOpen()).toBe(false);
+
+    stores.toggle("s1");
+    expect(a.isOpen()).toBe(true);
+    expect(stores.storeFor("s1")).toBe(a);
+
+    const b = stores.storeFor("s2");
+    expect(b.isOpen()).toBe(false);
+    expect(b).not.toBe(a);
+
+    stores.toggle("s2");
+    expect(a.isOpen()).toBe(true);
+    expect(b.isOpen()).toBe(true);
+    stores.toggle("s1");
+    expect(a.isOpen()).toBe(false);
+    expect(b.isOpen()).toBe(true);
   });
 });
 
@@ -491,9 +519,21 @@ describe("TerminalPopover", () => {
     expect(MockWebSocket.frames.some((f) => f.includes('"type":"close"'))).toBe(true);
     store.close();
   });
+
+  it("does not show an open panel from another conversation", async () => {
+    terminalStores.storeFor("s1").open();
+    const { container, rerender } = render(<TerminalPopover sessionId="s2" />);
+    expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
+
+    rerender(<TerminalPopover sessionId="s1" />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    });
+  });
 });
 
 /** Keep the shared singleton store closed at the end of every run. */
 afterEach(() => {
   terminalStore.close();
+  terminalStores.reset();
 });

@@ -2,7 +2,7 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { themeScheme } from "./features/terminal-popover/index.ts";
+import { terminalStores, themeScheme } from "./features/terminal-popover/index.ts";
 import { apply } from "./index.tsx";
 import {
   COMPOSER_DOCK_SLOT,
@@ -128,7 +128,10 @@ function fakeContext(theme?: ThemeServiceLite) {
 }
 
 describe("apply (client root)", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    terminalStores.reset();
+  });
 
   it("registers dictionaries, the dock button, and the popover slot", () => {
     const { ctx, registrations, localeCalls, effects, buttons } = fakeContext();
@@ -156,7 +159,7 @@ describe("apply (client root)", () => {
     expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
 
     act(() => {
-      void buttons[0]!.run({});
+      void buttons[0]!.run({ sessionId: "s1" });
     });
     // The mount beat is a 0 ms timer; poll instead of sleeping so slow
     // runners (Windows CI) do not race it.
@@ -165,7 +168,7 @@ describe("apply (client root)", () => {
     });
 
     act(() => {
-      void buttons[0]!.run({});
+      void buttons[0]!.run({ sessionId: "s1" });
     });
     // The collapse transition keeps the wrapper mounted for one beat.
     expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
@@ -205,5 +208,42 @@ describe("apply (client root)", () => {
     // module default only when it was reset; set it back after the check.
     expect(themeScheme.get()).toBe("light");
     themeScheme.set("dark");
+  });
+
+  it("ignores a toggle with no sessionId so a later session does not inherit an open panel", () => {
+    const { ctx, registrations, buttons } = fakeContext();
+    apply(ctx);
+    const view = registrations[0]!.view;
+
+    act(() => {
+      void buttons[0]!.run({});
+    });
+    const { container, rerender } = render(view({ sessionId: "s1" }) as ReactNode);
+    expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
+
+    rerender(view({ sessionId: "s2" }) as ReactNode);
+    expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
+  });
+
+  it("opens only the conversation whose sessionId was toggled", async () => {
+    const { ctx, registrations, buttons } = fakeContext();
+    apply(ctx);
+    const view = registrations[0]!.view;
+
+    const { container, rerender } = render(view({ sessionId: "s1" }) as ReactNode);
+    act(() => {
+      void buttons[0]!.run({ sessionId: "s1" });
+    });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    });
+
+    rerender(view({ sessionId: "s2" }) as ReactNode);
+    expect(container.querySelector('[data-testid="terminal-popover"]')).toBeNull();
+
+    rerender(view({ sessionId: "s1" }) as ReactNode);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="terminal-popover"]')).not.toBeNull();
+    });
   });
 });

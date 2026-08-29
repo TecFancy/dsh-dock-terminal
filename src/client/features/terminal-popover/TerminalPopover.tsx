@@ -1,14 +1,31 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ComposerDockProps } from "../../shared/config/index.ts";
 import { subscribeT, t } from "./i18n.ts";
-import { terminalStore, type TerminalStore } from "./terminal-store.ts";
+import { terminalStores, type TerminalStore } from "./terminal-store.ts";
 import { TerminalView, type TerminalMeta } from "./TerminalView.tsx";
 import styles from "./terminal.module.css";
 
 export interface TerminalPopoverProps extends ComposerDockProps {
-  /** Injectable for tests; defaults to the module-level shared store. */
+  /** Injectable for tests; defaults to the store for `sessionId`. */
   store?: TerminalStore;
 }
+
+/** Closed stand-in when the slot has no session yet (hero / new conversation). */
+const CLOSED_STORE: TerminalStore = {
+  open: () => undefined,
+  close: () => undefined,
+  toggle: () => undefined,
+  isOpen: () => false,
+  tabs: () => [],
+  activeId: () => null,
+  hasTab: () => false,
+  activate: () => undefined,
+  addTab: () => null,
+  closeTab: () => undefined,
+  setMaxPerSession: () => undefined,
+  maxPerSession: () => 0,
+  subscribe: () => () => undefined,
+};
 
 /** Must match the wrap transition duration in terminal.module.css. */
 const ANIM_MS = 200;
@@ -17,17 +34,23 @@ const EXPAND_KICK_MS = 16;
 
 /**
  * The popover mounted into `conversation.composer.dock` (the band under the
- * composer card). Renders nothing until the dock button opens the shared
+ * composer card). Renders nothing until the dock button opens this session's
  * store; on open it hosts one live terminal per tab (capped only when the
  * host configures a positive maxPerSession), with a tab bar to switch
- * between them.
+ * between them. A different conversation reads a different store, so an
+ * open panel in A does not appear in B.
  *
  * Open and close animate: the wrapper stays mounted through the collapse
  * transition (grid-template-rows 1fr -> 0fr plus a fade), then unmounts, so
  * the popover never pops in or out without motion.
  */
 export function TerminalPopover(props: TerminalPopoverProps) {
-  const store = props.store ?? terminalStore;
+  const sessionId = props.sessionId;
+  const store =
+    props.store ??
+    (sessionId !== undefined && sessionId !== ""
+      ? terminalStores.storeFor(sessionId)
+      : CLOSED_STORE);
   const open = useSyncExternalStore(store.subscribe, store.isOpen, () => false);
   useSyncExternalStore(
     subscribeT,

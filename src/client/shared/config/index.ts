@@ -5,6 +5,7 @@
 export type {
   ComposerDockProps,
   DockButton,
+  DockButtonRunCtx,
   DockButtonsRegistry,
   DockLogger,
   LocaleService,

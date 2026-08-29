@@ -1,13 +1,17 @@
 /**
- * Module-level terminal popover state shared between the dock button (the
- * registry's run callback) and the composer.dock slot view.
+ * Per-conversation terminal popover state, shared between the dock button
+ * (the registry's run callback) and the composer.dock slot view.
  *
- * The store owns the popover visibility AND its terminal tabs: each tab is a
- * stable id the host keys its pty on (`${sessionId}:${tabId}`). A view that
- * stops rendering a tab because the user switched to another tab parks the
- * pty on the host (the process survives); closing the tab sends a close frame
- * instead. `maxPerSession` is learned from the host meta frame and caps the
- * "+" button once known.
+ * One store per sessionId: opening the panel in conversation A must not
+ * pop it in conversation B. The host still keys ptys on
+ * `${sessionId}:${tabId}`; a view that stops rendering a tab because the
+ * user switched conversations parks the pty (the process survives);
+ * closing the tab sends a close frame instead. `maxPerSession` is learned
+ * from the host meta frame and caps the "+" button once known.
+ *
+ * A new-session / hero screen has no sessionId and does not mount
+ * `conversation.composer.dock` (the band under the composer). Toggle is a
+ * no-op there so a later session switch cannot inherit a leaked open flag.
  */
 
 export interface TerminalTab {
@@ -126,4 +130,41 @@ function createTabId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Registry of per-session stores. The dock button toggles by sessionId;
+ * the popover reads the store for the session currently in the slot.
+ */
+export interface TerminalSessionStores {
+  storeFor: (sessionId: string) => TerminalStore;
+  toggle: (sessionId: string | undefined) => void;
+  /** Drop every session store. Tests only: production must not forget parked tabs. */
+  reset: () => void;
+}
+
+export function createTerminalSessionStores(): TerminalSessionStores {
+  const stores = new Map<string, TerminalStore>();
+  const api: TerminalSessionStores = {
+    storeFor(sessionId: string) {
+      let store = stores.get(sessionId);
+      if (store === undefined) {
+        store = createTerminalStore();
+        stores.set(sessionId, store);
+      }
+      return store;
+    },
+    toggle(sessionId: string | undefined) {
+      if (sessionId === undefined || sessionId === "") return;
+      api.storeFor(sessionId).toggle();
+    },
+    reset() {
+      stores.clear();
+    },
+  };
+  return api;
+}
+
+/** Default registry used by the assembly root and the popover. */
+export const terminalStores = createTerminalSessionStores();
+
+/** Isolated store for tests that inject one explicitly. */
 export const terminalStore = createTerminalStore();
