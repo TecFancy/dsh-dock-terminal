@@ -1,7 +1,9 @@
 #!/usr/bin/env sh
-# Commit message lint (Conventional Commits) + strip AI-author trailers.
-# The trailer match is case-insensitive: Claude Code writes
-# "Co-Authored-By: Claude ..." while Copilot writes "Co-authored-by: Copilot".
+# Commit message lint (Conventional Commits, English subject) + strip
+# AI-author trailers. A trailer whose author is a known AI tool is removed
+# silently (a transformative gate, like prettier: history never carries it);
+# human co-authors are kept. The match is case-insensitive — Claude Code
+# writes "Co-Authored-By: Claude ...", Copilot "Co-authored-by: Copilot".
 # GNU sed (git-bash on Windows, Linux/macOS CI) supports -E + I.
 npx --no -- commitlint --edit "$1"
-sed -i -E '/^Co-[Aa]uthored-[Bb]y:[[:space:]]*(Claude|Copilot)/Id' "$1"
+sed -i -E '/^Co-[Aa]uthored-[Bb]y:[[:space:]]*(Claude|Codex|Copilot|Cursor|Gemini|DeepSeek|ChatGPT|Qwen|Kimi|Grok|Devin|Windsurf|OpenHands|Aider)([[:space:]]|$)/Id' "$1"

@@ -3,3 +3,6 @@ node_modules/
 /coverage/
 /dist/
 package-lock.json
+
+# husky hook scripts have no extension - prettier cannot infer a parser
+.husky/
